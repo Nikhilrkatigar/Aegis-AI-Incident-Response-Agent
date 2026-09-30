@@ -124,9 +124,13 @@ const userSchema = new Schema({
   passwordHash: String,
 });
 
+// Signed-out session tokens, kept until they would have expired anyway.
+const revokedTokenSchema = new Schema({ jti: { type: String, unique: true }, expiresAt: { type: Date, index: { expireAfterSeconds: 0 } } });
+
 const settingSchema = new Schema({ key: { type: String, unique: true }, value: Mixed }, { timestamps: true });
 
 export const User = model('User', userSchema);
+export const RevokedToken = model('RevokedToken', revokedTokenSchema, 'revoked_tokens');
 export const Setting = model('Setting', settingSchema);
 export const Incident = model('Incident', incidentSchema);
 export const AgentStep = model('AgentStep', stepSchema);

@@ -57,7 +57,7 @@ Alert → Hypothesise → Investigate → Decide → (Approve) → Act → Verif
 
 ## Try it in 2 minutes
 
-1. Open the app, then use **Sign in** in the top-right with a demo account:
+1. Open the app and sign in with a demo account (the login page has one-click buttons for them):
 
    | Username | Password | Role |
    |---|---|---|
@@ -70,7 +70,7 @@ Alert → Hypothesise → Investigate → Decide → (Approve) → Act → Verif
 4. Wherever you are in the app, a **permission prompt** pops up: *"Aegis wants to run an action: rollback → payment · high risk · 99% confident. Do you want to allow this?"* Press **1** to allow, or choose "No, and tell Aegis what to do instead" (Esc decides later). Aegis executes it, verifies recovery and writes the report. The same decision is available in the incident's **Risk gate · Human approval** panel.
 5. Then try **Misleading alert**. A harmless payment deploy lands right before the errors, so "roll back payment" is the obvious answer. It is wrong: the real cause is auth holding a stale Redis connection. The agent works this out from timing; the rule engine never does.
 
-Anyone can watch without signing in. Acting on anything needs an account, and every action is written to the **Audit log** under the signed-in user's name.
+Everything, including viewing incidents, needs a signed-in session. Every action is written to the **Audit log** under the signed-in user's name.
 
 ## How it works
 
@@ -132,7 +132,11 @@ flowchart LR
 |---|---|
 | Risk is fixed in code, raised by the target's blast radius. A restart of a tier-0 service (gateway, payment, payments-db) is medium risk; rollback, config revert, certificate rotation, IP blocking and DB session kills are high risk. | `server/src/agent/policy.js` |
 | **Autopilot is off by default: every action waits for a human.** An approver can turn it on. Even then it only covers low-risk actions on tier-1/2 services, at 80%+ confidence, with fully grounded evidence, decided by the AI agent. The rule engine never acts on its own. | `policy.js`, top bar switch |
-| Approvals need a signed-in user with the approver role. The approver's identity comes from the session token, never from the request body. | `server/src/auth.js`, `routes.js` |
+| Every API route except login and the health check needs a session (bcrypt-hashed passwords, JWT that expires after 12 hours). Approvals also need the approver role, and the approver's identity comes from the session token, never from the request body. | `server/src/auth.js`, `routes.js` |
+| Signing out revokes the token on the server (a denylist entry that expires with the token), so a copied token stops working at once. The browser drops all incident data, and Back cannot restore it from the page cache. | `auth.js`, `client/src/lib/auth.jsx`, `main.jsx` |
+| Brute force: 10 login attempts a minute per IP, and 5 wrong passwords lock that account for 15 minutes (even with the right password afterwards). | `routes.js`, `auth.js` |
+| The live stream (SSE) opens with a random one-time ticket that expires after 30 seconds, never with the session token in the URL. Request logs record paths only, never query strings. | `auth.js`, `app.js` |
+| The Vercel site sends a strict Content-Security-Policy (own scripts only; API calls only to Render), `X-Frame-Options: DENY`, `nosniff`, `no-referrer` and HSTS. | `client/vercel.json` |
 | The agent holds no credentials. The executor takes a lease lock (MongoDB unique index + TTL) on the target, then calls PayFlow's admin API with a JWT that expires in 5 minutes, can be used once, and names the exact action and target. | `incidents/executor.js`, `incidents/locks.js`, `payflow/admin.js` |
 | Idempotency key per action, so a retry can never run the same fix twice. | `executor.js` |
 | Evidence grounding: numbers, timestamps, versions and quoted log lines in the diagnosis must appear in tool output, or confidence is capped at 55%. | `agent/grounding.js` |
@@ -289,6 +293,7 @@ cd server && npm test
 
 The suite uses Node's built-in test runner, needs no extra packages, and runs in about 35 seconds:
 
+- **Security:** every read needs a session (401 without one); a signed-out token is rejected at once; stream tickets work once; five wrong passwords lock the account.
 - **Approval policy:** blast radius, autopilot rules, the rule engine never acting alone, weak evidence blocking autopilot.
 - **Evidence grounding** and **log compaction**, including prompt-injection lines being withheld.
 - **Every fault scenario:** fires an alert, its correct fix recovers the platform, and a wrong fix does not.
@@ -319,13 +324,15 @@ render.yaml                  Render blueprint for the API
 
 ## API
 
-Reads are public; writes need `Authorization: Bearer <token>` from `POST /api/auth/login`.
+Everything except login, health and the ticketed stream needs `Authorization: Bearer <token>` from `POST /api/auth/login`.
 
 | Method | Path | Who |
 |---|---|---|
 | `POST` | `/api/auth/login` | anyone (rate limited) |
-| `GET` | `/api/health`, `/api/platform`, `/api/incidents`, `/api/incidents/:id`, `/api/audit`, `/api/benchmark`, `/api/lab` | anyone |
-| `GET` | `/api/events` | anyone: server-sent events for live updates |
+| `GET` | `/api/health` | anyone: `{status, db}` only, for deploy checks |
+| `POST` | `/api/auth/logout` | signed in: revokes the token |
+| `GET` | `/api/platform`, `/api/incidents`, `/api/incidents/:id`, `/api/audit`, `/api/benchmark`, `/api/lab`, `/api/status` | signed in |
+| `POST` → `GET` | `/api/events/ticket` → `/api/events?ticket=…` | signed in: one-time ticket, then server-sent events |
 | `POST` | `/api/incidents/:id/approve`, `/api/incidents/:id/reject` | approver |
 | `PUT` | `/api/settings/autopilot` | approver |
 | `POST` | `/api/incidents` (manual report), `/api/incidents/:id/notes`, `/api/incidents/:id/resolve` | signed in |

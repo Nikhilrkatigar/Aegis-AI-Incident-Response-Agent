@@ -12,7 +12,7 @@ import { llmAvailable, agentModel, providerStatus } from './agent/llm.js';
 import { bus } from './incidents/bus.js';
 import { openIncident, approve, reject, addNote, resolveByHuman } from './incidents/lifecycle.js';
 import { getAutopilot, setAutopilot } from './incidents/settings.js';
-import { login, authenticate, requireRole } from './auth.js';
+import { login, logout, authenticate, requireRole, issueStreamTicket, redeemStreamTicket } from './auth.js';
 import { HttpError, route, parse, ok } from './http.js';
 
 export const api = Router();
@@ -26,9 +26,7 @@ async function loadIncident(id) {
   return incident;
 }
 
-// Reading the dashboard is open; every action needs a signed-in user.
-const signedIn = authenticate;
-const approverOnly = [authenticate, requireRole('approver')];
+const approverOnly = requireRole('approver');
 
 // --- auth -------------------------------------------------------------------------
 
@@ -39,13 +37,43 @@ api.post('/auth/login', rateLimit({ windowMs: 60_000, limit: 10, standardHeaders
   ok(res, session);
 }));
 
-api.get('/auth/me', signedIn, (req, res) => ok(res, req.user));
+// Public: deploy health checks need it. Reveals no incident data.
+api.get('/health', (_req, res) => ok(res, { status: 'ok', db: mongoose.connection.readyState === 1 ? 'up' : 'down' }));
 
-// --- health, platform, settings ---------------------------------------------------------
+// Public by URL, but only with a one-time ticket from POST /events/ticket (EventSource cannot send headers).
+api.get('/events', (req, res, next) => {
+  try {
+    redeemStreamTicket(typeof req.query.ticket === 'string' ? req.query.ticket : '');
+  } catch (err) {
+    return next(err);
+  }
+  res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
+  res.flushHeaders();
+  const send = (event) => res.write(`data: ${JSON.stringify(event)}\n\n`);
+  const keepAlive = setInterval(() => res.write(': ping\n\n'), 20_000);
+  bus.on('event', send);
+  req.on('close', () => {
+    clearInterval(keepAlive);
+    bus.off('event', send);
+  });
+});
 
-api.get('/health', (_req, res) =>
-  ok(res, { status: 'ok', db: mongoose.connection.readyState === 1 ? 'up' : 'down', agent: agentModel() || 'rules-only', providers: providerStatus(), autopilot: getAutopilot() }),
-);
+// --- everything below needs a signed-in user ------------------------------------------------
+api.use(authenticate);
+
+api.get('/auth/me', (req, res) => ok(res, req.user));
+
+api.post('/auth/logout', route(async (req, res) => {
+  await logout(req);
+  await AuditLog.create({ actor: req.user.name, action: 'auth.logout' });
+  ok(res, { signedOut: true });
+}));
+
+api.post('/events/ticket', (req, res) => ok(res, { ticket: issueStreamTicket(req.user) }));
+
+api.get('/status', (_req, res) => ok(res, { agent: agentModel() || 'rules-only', providers: providerStatus(), autopilot: getAutopilot() }));
+
+// --- platform, settings ---------------------------------------------------------
 
 api.get('/settings', (_req, res) => ok(res, { autopilot: getAutopilot() }));
 
@@ -92,7 +120,7 @@ api.get('/incidents/:id', route(async (req, res) => {
   ok(res, { incident, steps, actions });
 }));
 
-api.post('/incidents', signedIn, route(async (req, res) => {
+api.post('/incidents', route(async (req, res) => {
   const { description } = parse(z.object({ description: Text(10, 500) }), req.body);
   const incident = await openIncident({ alerts: [], services: [], severity: 'SEV3', source: 'manual', description: `${description} (reported by ${req.user.name})` });
   ok(res, incident, 201);
@@ -113,7 +141,7 @@ api.post('/incidents/:id/reject', approverOnly, route(async (req, res) => {
   ok(res, incident);
 }));
 
-api.post('/incidents/:id/resolve', signedIn, route(async (req, res) => {
+api.post('/incidents/:id/resolve', route(async (req, res) => {
   const { note } = parse(z.object({ note: Text(5, 500) }), req.body);
   const incident = await loadIncident(req.params.id);
   if (incident.status !== 'needs_human') throw new HttpError(409, 'Only incidents handed over to on-call can be closed by hand');
@@ -121,7 +149,7 @@ api.post('/incidents/:id/resolve', signedIn, route(async (req, res) => {
   ok(res, incident);
 }));
 
-api.post('/incidents/:id/notes', signedIn, route(async (req, res) => {
+api.post('/incidents/:id/notes', route(async (req, res) => {
   const { text } = parse(z.object({ text: Text(3, 500) }), req.body);
   const incident = await loadIncident(req.params.id);
   await addNote(incident, req.user, text);
@@ -137,20 +165,20 @@ api.get('/lab', (_req, res) => {
   });
 });
 
-api.post('/lab/faults', signedIn, route(async (req, res) => {
+api.post('/lab/faults', route(async (req, res) => {
   const { scenario } = parse(z.object({ scenario: z.enum(Object.keys(SCENARIOS)) }), req.body);
   if (!live.inject(scenario)) throw new HttpError(409, `${SCENARIOS[scenario].title} is already active`);
   await AuditLog.create({ actor: req.user.name, action: 'lab.fault_injected', detail: scenario });
   ok(res, { scenario }, 201);
 }));
 
-api.post('/lab/reset', signedIn, route(async (req, res) => {
+api.post('/lab/reset', route(async (req, res) => {
   live.reset();
   await AuditLog.create({ actor: req.user.name, action: 'lab.reset', detail: 'All faults and chaos toggles cleared' });
   ok(res, { reset: true });
 }));
 
-api.post('/lab/chaos', signedIn, route(async (req, res) => {
+api.post('/lab/chaos', route(async (req, res) => {
   const { toggle, enabled } = parse(z.object({ toggle: z.enum(Object.keys(CHAOS_TOGGLES)), enabled: z.boolean() }), req.body);
   if (enabled) live.chaos.add(toggle);
   else live.chaos.delete(toggle);
@@ -180,7 +208,7 @@ api.get('/benchmark', route(async (req, res) => {
   });
 }));
 
-api.post('/benchmark', signedIn, route(async (req, res) => {
+api.post('/benchmark', route(async (req, res) => {
   const { diagnoser, seeds } = parse(z.object({ diagnoser: z.enum(['baseline', 'both']), seeds: z.number().int().min(1).max(SEEDS.length).default(SEEDS.length) }), req.body);
   let started;
   try {
@@ -198,14 +226,3 @@ api.get('/audit', route(async (_req, res) => {
   ok(res, await AuditLog.find().sort({ at: -1 }).limit(200).lean());
 }));
 
-api.get('/events', (req, res) => {
-  res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
-  res.flushHeaders();
-  const send = (event) => res.write(`data: ${JSON.stringify(event)}\n\n`);
-  const keepAlive = setInterval(() => res.write(': ping\n\n'), 20_000);
-  bus.on('event', send);
-  req.on('close', () => {
-    clearInterval(keepAlive);
-    bus.off('event', send);
-  });
-});

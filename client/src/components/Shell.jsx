@@ -36,7 +36,7 @@ function Freshness() {
 function AgentMode() {
   const [health, setHealth] = useState(null);
   useEffect(() => {
-    const load = () => api.get('/health').then(setHealth).catch(() => setHealth({ agent: 'offline', providers: [] }));
+    const load = () => api.get('/status').then(setHealth).catch(() => setHealth({ agent: 'offline', providers: [] }));
     load();
     const id = setInterval(load, 15_000);
     return () => clearInterval(id);
@@ -201,7 +201,7 @@ function UserMenu() {
     <div className="flex items-center gap-2 text-[12.5px]">
       <span className="text-ink font-medium">{user.name}</span>
       <span className="px-1.5 h-5 inline-flex items-center rounded bg-sunken text-muted text-[11.5px]">{user.role}</span>
-      <button type="button" onClick={() => { logout(); toast.success('Signed out'); }} className="text-muted hover:text-ink cursor-pointer" aria-label="Sign out">
+      <button type="button" onClick={logout} className="text-muted hover:text-ink cursor-pointer" aria-label="Sign out">
         <LogOut size={15} strokeWidth={1.75} aria-hidden />
       </button>
     </div>

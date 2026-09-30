@@ -18,8 +18,9 @@ app.use(express.json({ limit: '100kb' }));
 app.use(mongoSanitize());
 app.use(pinoHttp({
   logger,
-  autoLogging: { ignore: (req) => req.url === '/api/events' || req.url === '/api/platform' },
-  serializers: { req: (req) => ({ method: req.method, url: req.url }), res: (res) => ({ status: res.statusCode }) },
+  autoLogging: { ignore: (req) => req.url.startsWith('/api/events') || req.url === '/api/platform' },
+  // Path only: query strings (like stream tickets) never reach the logs.
+  serializers: { req: (req) => ({ method: req.method, path: req.url.split('?')[0] }), res: (res) => ({ status: res.statusCode }) },
 }));
 
 app.use('/api', rateLimit({ windowMs: 60_000, limit: 300, standardHeaders: 'draft-7', legacyHeaders: false }), api);

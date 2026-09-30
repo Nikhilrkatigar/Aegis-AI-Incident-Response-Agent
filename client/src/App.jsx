@@ -1,8 +1,8 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 import { MotionConfig } from 'motion/react';
 import { Toaster } from 'sonner';
 import { LiveProvider } from './lib/live';
-import { AuthProvider } from './lib/auth';
+import { AuthProvider, useAuth } from './lib/auth';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Shell } from './components/Shell';
 import IncidentsPage from './pages/IncidentsPage';
@@ -12,32 +12,46 @@ import AuditPage from './pages/AuditPage';
 import LoginPage from './pages/LoginPage';
 import BenchmarkPage from './pages/BenchmarkPage';
 
+// Everything except the login page needs a session. Incident data and the live stream
+// only load once someone is signed in.
+function RequireAuth() {
+  const { user } = useAuth();
+  const location = useLocation();
+  if (!user) return <Navigate to={`/login?next=${encodeURIComponent(location.pathname)}`} replace />;
+  return (
+    <LiveProvider>
+      <Outlet />
+    </LiveProvider>
+  );
+}
+
 export default function App() {
   return (
     <MotionConfig reducedMotion="user">
       <ErrorBoundary>
         <AuthProvider>
-          <LiveProvider>
-            <BrowserRouter>
-              <Routes>
+          <BrowserRouter>
+            <Routes>
+              <Route path="login" element={<LoginPage />} />
+              <Route element={<RequireAuth />}>
                 <Route element={<Shell />}>
                   <Route index element={<Navigate to="/incidents" replace />} />
                   <Route path="incidents" element={<IncidentsPage />} />
                   <Route path="incidents/:id" element={<IncidentsPage />} />
                   <Route path="incidents/:id/report" element={<ReportPage />} />
                   <Route path="lab" element={<LabPage />} />
-                  <Route path="login" element={<LoginPage />} />
                   <Route path="benchmark" element={<BenchmarkPage />} />
                   <Route path="audit" element={<AuditPage />} />
                   <Route path="*" element={<Navigate to="/incidents" replace />} />
                 </Route>
-              </Routes>
-            </BrowserRouter>
-          </LiveProvider>
+              </Route>
+            </Routes>
+          </BrowserRouter>
         </AuthProvider>
       </ErrorBoundary>
       <Toaster
         position="top-right"
+        offset={{ top: 68, right: 16 }}
         toastOptions={{ style: { fontFamily: 'var(--font-sans)', borderRadius: 6, border: '1px solid var(--color-line)', background: 'var(--color-surface)', color: 'var(--color-ink)' } }}
       />
     </MotionConfig>

@@ -101,6 +101,37 @@ test('a rejected action is escalated with a report', { skip: !db && 'no MongoDB'
   assert.equal(await Action.countDocuments({ incident: incident._id }), 0, 'nothing ran after the rejection');
 });
 
+test('every read needs a session, and signing out revokes it', { skip: !db && 'no MongoDB' }, async () => {
+  const get = (path, token) => fetch(base + path, { headers: token ? { authorization: `Bearer ${token}` } : {} });
+  assert.equal((await get('/incidents')).status, 401);
+  assert.equal((await get('/audit')).status, 401);
+  assert.equal((await get('/health')).status, 200, 'health stays public for deploy checks');
+
+  const token = await signIn('adithya');
+  assert.equal((await get('/incidents', token)).status, 200);
+  assert.equal((await post('/auth/logout', {}, token)).status, 200);
+  assert.equal((await get('/incidents', token)).status, 401, 'a signed-out token is dead even before it expires');
+});
+
+test('the live stream needs a one-time ticket', { skip: !db && 'no MongoDB' }, async () => {
+  assert.equal((await fetch(`${base}/events`)).status, 401);
+  const token = await signIn('priya');
+  const { data } = await (await post('/events/ticket', {}, token)).json();
+  const ctrl = new AbortController();
+  const first = await fetch(`${base}/events?ticket=${data.ticket}`, { signal: ctrl.signal });
+  assert.equal(first.status, 200);
+  ctrl.abort();
+  assert.equal((await fetch(`${base}/events?ticket=${data.ticket}`)).status, 401, 'a ticket works once');
+});
+
+// Called directly: the per-IP rate limit on /auth/login would otherwise mask the per-account lockout.
+test('five wrong passwords lock the account, even with the right password after', { skip: !db && 'no MongoDB' }, async () => {
+  const { login } = await import('../src/auth.js');
+  const status = (p) => p.then(() => 200, (e) => e.status);
+  for (let i = 0; i < 5; i++) assert.equal(await status(login('priya', 'wrong')), 401);
+  assert.equal(await status(login('priya', config.SEED_USER_PASSWORD)), 429);
+});
+
 test('the admin API refuses calls without a valid token', async () => {
   if (!server) server = app.listen(config.PORT);
   const call = (auth) => fetch(`http://127.0.0.1:${config.PORT}/payflow/admin/actions`, {

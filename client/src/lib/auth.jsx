@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useState } from 'react';
 import { api } from './api';
 
 const KEY = 'aegis.session';
@@ -19,38 +19,46 @@ function writeSession(session) {
   } catch { /* storage blocked: the session lives in memory for this tab */ }
 }
 
+// Current token, read by the API client on every request.
+let current = readSession();
+api.interceptors.request.use((cfg) => {
+  if (current?.token) cfg.headers.Authorization = `Bearer ${current.token}`;
+  return cfg;
+});
+
+// A full page load to the login screen drops every piece of incident data held in memory.
+function leave(reason) {
+  current = null;
+  writeSession(null);
+  const next = window.location.pathname.startsWith('/login') ? '' : `?next=${encodeURIComponent(window.location.pathname)}${reason ? `&reason=${reason}` : ''}`;
+  window.location.assign(`/login${next}`);
+}
+
+// Any 401 means the session is gone (expired, revoked, or signed out elsewhere).
+api.interceptors.response.use(undefined, (err) => {
+  if (err.status === 401 && current) leave('expired');
+  return Promise.reject(err);
+});
+
 // Session token lives in this tab only; closing the tab signs you out.
 export function AuthProvider({ children }) {
-  const [session, setSession] = useState(readSession);
-
-  useEffect(() => {
-    const id = api.interceptors.request.use((cfg) => {
-      if (session?.token) cfg.headers.Authorization = `Bearer ${session.token}`;
-      return cfg;
-    });
-    return () => api.interceptors.request.eject(id);
-  }, [session]);
+  const [session, setSession] = useState(current);
 
   const login = useCallback(async (username, password) => {
     const s = await api.post('/auth/login', { username, password });
+    current = s;
     writeSession(s);
     setSession(s);
     return s.user;
   }, []);
 
-  const logout = useCallback(() => {
-    writeSession(null);
-    setSession(null);
+  const logout = useCallback(async () => {
+    try {
+      await api.post('/auth/logout'); // revokes the token server-side
+    } finally {
+      leave('signed-out');
+    }
   }, []);
-
-  // Expired or revoked token: drop it so the UI shows "Sign in" again.
-  useEffect(() => {
-    const id = api.interceptors.response.use(undefined, (err) => {
-      if (err.status === 401 && session) logout();
-      return Promise.reject(err);
-    });
-    return () => api.interceptors.response.eject(id);
-  }, [session, logout]);
 
   return <AuthContext.Provider value={{ user: session?.user || null, login, logout }}>{children}</AuthContext.Provider>;
 }

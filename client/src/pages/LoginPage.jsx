@@ -23,6 +23,7 @@ export default function LoginPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const next = params.get('next') || '/incidents';
+  const notice = { 'signed-out': 'You are signed out. Your session was revoked on the server.', expired: 'Your session ended. Sign in again to continue.' }[params.get('reason')];
 
   if (user) return <Navigate to={next} replace />;
 
@@ -42,15 +43,16 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-[calc(100vh-56px)] grid place-items-center p-6">
+    <main className="min-h-screen grid place-items-center p-6">
       <form onSubmit={submit} className="panel w-full max-w-sm p-6" aria-labelledby="login-title">
         <div className="flex items-center gap-2">
           <ShieldCheck size={18} strokeWidth={2} className="text-accent" aria-hidden />
           <h1 id="login-title" className="text-[16px] font-semibold">Sign in to Aegis</h1>
         </div>
         <p className="mt-1 text-[13px] text-muted leading-relaxed">
-          Anyone can watch incidents. Acting on them needs an account: approvers can approve actions, responders can investigate and use the Fault Lab.
+          Incident response for PayFlow. Approvers can approve fixes; responders can investigate and use the Fault Lab.
         </p>
+        {notice && <p role="status" className="mt-3 px-3 py-2 rounded-card bg-sunken text-[12.5px] text-ink">{notice}</p>}
 
         <label htmlFor="username" className="mt-4 block text-[13px] font-medium">Username</label>
         <input id="username" autoComplete="username" autoCapitalize="none" spellCheck={false} value={username} onChange={(e) => setUsername(e.target.value)} className="mt-1 w-full h-9 px-3 rounded-card border border-line bg-surface text-[13.5px]" required />
@@ -98,6 +100,6 @@ export default function LoginPage() {
           <p className="mt-2 text-[11.5px] text-muted">Picking one fills the form. Approvers can approve fixes; the responder cannot.</p>
         </fieldset>
       </form>
-    </div>
+    </main>
   );
 }

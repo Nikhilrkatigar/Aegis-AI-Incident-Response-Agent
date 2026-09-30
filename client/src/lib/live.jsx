@@ -43,9 +43,32 @@ export function LiveProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    const source = new EventSource(`${API_URL}/events`);
-    // EventSource reconnects by itself; on every (re)connect, refetch what may have changed meanwhile.
-    source.onopen = () => {
+    let source;
+    let retry;
+    let closed = false;
+
+    // Each connection needs a fresh one-time ticket, so reconnects are done here rather than by
+    // EventSource itself. On every (re)connect, refetch what may have changed meanwhile.
+    const connect = async () => {
+      let ticket;
+      try {
+        ({ ticket } = await api.post('/events/ticket'));
+      } catch {
+        if (!closed) retry = setTimeout(connect, 3000);
+        return;
+      }
+      if (closed) return;
+      source = new EventSource(`${API_URL}/events?ticket=${encodeURIComponent(ticket)}`);
+      source.onopen = onOpen;
+      source.onmessage = onMessage;
+      source.onerror = () => {
+        source.close();
+        setConnection('reconnecting');
+        if (!closed) retry = setTimeout(connect, 2000);
+      };
+    };
+
+    const onOpen = () => {
       setConnection('live');
       loadIncidents();
       api.get('/settings').then((s) => setAutopilot(s.autopilot)).catch(() => {});
@@ -53,8 +76,7 @@ export function LiveProvider({ children }) {
         api.get(`/incidents/${id}`).then((d) => setDetails((prev) => ({ ...prev, [id]: d }))).catch(() => {});
       }
     };
-    source.onerror = () => setConnection('reconnecting');
-    source.onmessage = (msg) => {
+    const onMessage = (msg) => {
       const event = JSON.parse(msg.data);
       if (event.type === 'incident') {
         const inc = event.incident;
@@ -76,7 +98,13 @@ export function LiveProvider({ children }) {
         });
       }
     };
-    return () => source.close();
+
+    connect();
+    return () => {
+      closed = true;
+      clearTimeout(retry);
+      source?.close();
+    };
   }, [loadIncidents]);
 
   return (
