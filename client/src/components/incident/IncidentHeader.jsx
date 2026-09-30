@@ -27,7 +27,7 @@ export function IncidentHeader({ incident, stepCount }) {
         <SeverityTag severity={incident.severity} />
         <StatusPill status={incident.status} />
         {incident.report && (
-          <Link to={`/incidents/${incident._id}/report`} className="ml-auto inline-flex items-center gap-1.5 h-7 px-2.5 rounded-card border border-line bg-surface text-[13px] hover:bg-sunken">
+          <Link to={`/incidents/${incident._id}/report`} data-tour="report" className="ml-auto inline-flex items-center gap-1.5 h-7 px-2.5 rounded-card border border-line bg-surface text-[13px] hover:bg-sunken">
             <FileText size={14} strokeWidth={1.75} aria-hidden />
             Incident report
           </Link>

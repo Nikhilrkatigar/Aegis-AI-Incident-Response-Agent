@@ -38,7 +38,7 @@ function IncidentDetail({ id }) {
       <IncidentHeader incident={incident} stepCount={steps.length} />
       <div className="px-6 py-4 space-y-4">
         <Diagnosis incident={incident} />
-        <section aria-labelledby="trace-title">
+        <section aria-labelledby="trace-title" data-tour="trace">
           <h2 id="trace-title" className="text-[12px] uppercase tracking-wide text-muted font-medium mb-1">Reasoning trace</h2>
           <Trace key={id} steps={steps} openedAt={incident.openedAt} />
           {working && (
@@ -100,10 +100,10 @@ export default function IncidentsPage() {
       <aside className="border-l border-line overflow-y-auto" aria-label="Context">
         {current && <ApprovalCard incident={current.incident} />}
         {current && (
-          <>
+          <div data-tour="hypotheses">
             <PanelTitle>Hypotheses</PanelTitle>
             <Hypotheses steps={current.steps} mode={current.incident.mode} />
-          </>
+          </div>
         )}
         <PanelTitle>Services · last 15 min</PanelTitle>
         <ServiceHealth />

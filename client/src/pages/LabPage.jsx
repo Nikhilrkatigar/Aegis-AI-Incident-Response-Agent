@@ -45,7 +45,7 @@ function FaultProgress({ startedAt }) {
       <p className="mt-1.5 flex items-center gap-2 text-[12.5px]" role="status">
         <span aria-hidden className="size-1.5 rounded-full bg-warn" />
         <span className="text-ink">Alert fired: <span className="font-mono">{incident.number}</span> {STATUS_LABEL[incident.status]?.toLowerCase()}</span>
-        <Link to={`/incidents/${incident._id}`} className="inline-flex items-center gap-1 text-accent font-medium hover:underline underline-offset-2">
+        <Link to={`/incidents/${incident._id}`} data-tour="open-incident" className="inline-flex items-center gap-1 text-accent font-medium hover:underline underline-offset-2">
           Open incident <ArrowRight size={13} aria-hidden />
         </Link>
       </p>
@@ -170,6 +170,7 @@ export default function LabPage() {
               <Button
                 size="sm"
                 icon={Bomb}
+                data-tour={`inject-${s.id}`}
                 variant={s.active ? 'ghost' : 'secondary'}
                 disabled={s.active || !user}
                 title={user ? '' : 'Sign in to inject faults'}

@@ -73,6 +73,7 @@ export function ApprovalCard({ incident }) {
       transition={{ duration: 0.2, ease: 'easeOut' }}
       className={`m-3 panel p-4 border-l-2 ${{ warn: 'border-l-warn', accent: 'border-l-accent', danger: 'border-l-danger', neutral: 'border-l-line' }[tone]}`}
       aria-labelledby="gate-title"
+      data-tour="risk-gate"
       aria-live="polite"
     >
       <p className="text-[11px] uppercase tracking-wide text-muted font-medium">Risk gate</p>

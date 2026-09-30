@@ -7,6 +7,7 @@ import { useAuth } from '../lib/auth';
 import { api } from '../lib/api';
 import { ApprovalPrompt } from './ApprovalPrompt';
 import { ThemeToggle } from './ThemeToggle';
+import { Tour } from './Tour';
 
 const NAV = [
   { to: '/incidents', label: 'Incidents', icon: Siren },
@@ -226,6 +227,7 @@ export function Shell() {
             <NavLink
               key={to}
               to={to}
+              data-tour={`nav-${to.slice(1)}`}
               className={({ isActive }) =>
                 `flex items-center gap-2.5 h-8 px-2.5 rounded-card text-[13.5px] transition-colors ${isActive ? 'bg-accent-soft text-accent font-medium' : 'text-muted hover:text-ink hover:bg-sunken'}`
               }
@@ -249,6 +251,7 @@ export function Shell() {
           <div className="ml-auto flex items-center gap-4">
             <PendingApprovals />
             <AutopilotSwitch />
+            <Tour />
             <ThemeToggle />
             <UserMenu />
           </div>
