@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { FlaskRound, Play, Gauge } from 'lucide-react';
 import { api } from '../lib/api';
-import { useOnCall } from '../lib/oncall';
+import { useAuth } from '../lib/auth';
 import { usd, ACTION_LABEL, CATEGORY_LABEL } from '../lib/format';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
@@ -91,7 +91,7 @@ function Misses({ runs }) {
 }
 
 export default function BenchmarkPage() {
-  const { person } = useOnCall();
+  const { user } = useAuth();
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [batch, setBatch] = useState('');
@@ -111,7 +111,7 @@ export default function BenchmarkPage() {
   const start = async (diagnoser) => {
     setBusy(true);
     try {
-      const r = await api.post('/benchmark', { diagnoser, operator: person });
+      const r = await api.post('/benchmark', { diagnoser, seeds: diagnoser === 'both' ? 1 : undefined });
       toast.success(`Benchmark started: ${r.total} cases`);
       setBatch('');
       setConfirm(false);
@@ -125,7 +125,8 @@ export default function BenchmarkPage() {
 
   if (error && !data) return <ErrorState message={error} onRetry={load} />;
   if (!data) return <Loading label="Loading benchmark" rows={8} />;
-  const cases = data.seeds.length * 8;
+  const cases = data.seeds.length * data.scenarioCount;
+  const signInHint = user ? '' : 'Sign in to run the benchmark';
 
   return (
     <div className="max-w-5xl px-6 py-5">
@@ -133,13 +134,13 @@ export default function BenchmarkPage() {
         <div className="flex-1">
           <h1 className="text-[18px] font-semibold">Benchmark</h1>
           <p className="mt-1 text-[13px] text-muted max-w-2xl leading-relaxed">
-            Every fault scenario, {data.seeds.length} random seeds each ({cases} cases), each in its own sandbox PayFlow. A case passes when the root cause and the fix are both right.
-            Then the fix is applied to the sandbox to check the platform actually recovers.
+            Every fault scenario in its own sandbox PayFlow: the rule baseline runs {data.seeds.length} seeds each ({cases} cases), the agent runs one seed each ({data.scenarioCount} cases) to stay inside free model quotas.
+            A case passes when the root cause and the fix are both right; the fix is then applied to the sandbox to check the platform actually recovers. The agent never sees which fault was injected.
           </p>
         </div>
         <div className="flex gap-2 shrink-0">
-          <Button icon={Gauge} busy={busy && !confirm} disabled={!!data.running} onClick={() => start('baseline')}>Run baseline</Button>
-          <Button variant="primary" icon={Play} disabled={!!data.running || !data.agentAvailable} onClick={() => setConfirm(true)} title={data.agentAvailable ? '' : 'Needs ANTHROPIC_API_KEY on the server'}>
+          <Button icon={Gauge} busy={busy && !confirm} disabled={!!data.running || !user} title={signInHint} onClick={() => start('baseline')}>Run baseline</Button>
+          <Button variant="primary" icon={Play} disabled={!!data.running || !data.agentAvailable || !user} onClick={() => setConfirm(true)} title={signInHint || (data.agentAvailable ? '' : 'Needs a model API key on the server')}>
             Run agent vs baseline
           </Button>
         </div>
@@ -205,7 +206,7 @@ export default function BenchmarkPage() {
         title="Run the agent benchmark?"
         footer={<><Button data-close onClick={() => setConfirm(false)} disabled={busy}>Cancel</Button><Button variant="primary" busy={busy} onClick={() => start('both')}>Start</Button></>}
       >
-        Runs {cases} agent investigations against the Claude API, 4 at a time, plus the free rule baseline. This spends real API credit; the exact cost of every case is recorded and shown here.
+        Runs {data.scenarioCount} agent investigations (one per scenario, 4 at a time) through the model chain, plus the free rule baseline. Each investigation uses a few model calls from your free quotas; token usage is recorded per case.
       </Modal>
     </div>
   );

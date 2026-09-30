@@ -1,3 +1,4 @@
+import { Check, CircleAlert } from 'lucide-react';
 import { pct, CATEGORY_LABEL, ACTION_LABEL } from '../../lib/format';
 import { Pill } from '../ui/Pill';
 
@@ -21,9 +22,29 @@ export function Diagnosis({ incident }) {
 
       <div className={`mt-3 grid gap-4 ${d.ruled_out?.length ? 'md:grid-cols-2' : ''}`}>
         <div>
-          <h3 className="text-[12px] text-muted font-medium">Evidence</h3>
-          <ul className="mt-1 space-y-1 text-[13px] leading-snug list-disc pl-4 marker:text-line">
-            {d.evidence.map((e) => <li key={e}>{e}</li>)}
+          <h3 className="text-[12px] text-muted font-medium">
+            Evidence
+            {d.grounding?.checked > 0 && (
+              <span className={`ml-2 font-normal ${d.grounding.weak ? 'text-danger' : 'text-ok'}`} title="Timestamps, versions, measurements and quoted log lines in the evidence are checked against what the tools actually returned.">
+                {d.grounding.grounded}/{d.grounding.checked} facts found in tool output
+              </span>
+            )}
+          </h3>
+          <ul className="mt-1 space-y-1 text-[13px] leading-snug">
+            {d.evidence.map((e, i) => {
+              const status = d.grounding?.items?.[i]?.status;
+              return (
+                <li key={e} className="grid grid-cols-[14px_1fr] gap-1.5">
+                  {status === 'grounded' ? <Check size={13} className="mt-0.5 text-ok" aria-label="found in tool output" />
+                    : status === 'unmatched' ? <CircleAlert size={13} className="mt-0.5 text-danger" aria-label="not found in tool output" />
+                      : <span aria-hidden className="mt-1.5 size-1 rounded-full bg-line justify-self-center" />}
+                  <span>
+                    {e}
+                    {status === 'unmatched' && <span className="block text-[12px] text-danger">Not in tool output: {d.grounding.items[i].missing.join(', ')}</span>}
+                  </span>
+                </li>
+              );
+            })}
           </ul>
         </div>
         {d.ruled_out?.length > 0 && (

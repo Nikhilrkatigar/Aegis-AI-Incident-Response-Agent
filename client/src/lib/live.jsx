@@ -12,6 +12,7 @@ export function LiveProvider({ children }) {
   const [platformError, setPlatformError] = useState(null);
   const [platformAt, setPlatformAt] = useState(null);
   const [connection, setConnection] = useState('connecting');
+  const [autopilot, setAutopilot] = useState(false);
   const [details, setDetails] = useState({});
   const detailsRef = useRef(details);
   useEffect(() => {
@@ -43,7 +44,15 @@ export function LiveProvider({ children }) {
 
   useEffect(() => {
     const source = new EventSource(`${API_URL}/events`);
-    source.onopen = () => { setConnection('live'); loadIncidents(); };
+    // EventSource reconnects by itself; on every (re)connect, refetch what may have changed meanwhile.
+    source.onopen = () => {
+      setConnection('live');
+      loadIncidents();
+      api.get('/settings').then((s) => setAutopilot(s.autopilot)).catch(() => {});
+      for (const id of Object.keys(detailsRef.current)) {
+        api.get(`/incidents/${id}`).then((d) => setDetails((prev) => ({ ...prev, [id]: d }))).catch(() => {});
+      }
+    };
     source.onerror = () => setConnection('reconnecting');
     source.onmessage = (msg) => {
       const event = JSON.parse(msg.data);
@@ -58,6 +67,7 @@ export function LiveProvider({ children }) {
           api.get(`/incidents/${inc._id}`).then((d) => setDetails((prev) => ({ ...prev, [inc._id]: d }))).catch(() => {});
         }
       }
+      if (event.type === 'settings') setAutopilot(event.settings.autopilot);
       if (event.type === 'step') {
         setDetails((prev) => {
           const d = prev[event.incidentId];
@@ -70,7 +80,7 @@ export function LiveProvider({ children }) {
   }, [loadIncidents]);
 
   return (
-    <LiveContext.Provider value={{ incidents, incidentsError, loadIncidents, details, loadIncident, platform, platformAt, platformError, connection }}>
+    <LiveContext.Provider value={{ incidents, incidentsError, loadIncidents, details, loadIncident, platform, platformAt, platformError, connection, autopilot, setAutopilot }}>
       {children}
     </LiveContext.Provider>
   );

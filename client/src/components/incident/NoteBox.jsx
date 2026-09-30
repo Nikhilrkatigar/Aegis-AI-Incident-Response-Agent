@@ -2,12 +2,13 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { Send } from 'lucide-react';
 import { api } from '../../lib/api';
-import { useOnCall } from '../../lib/oncall';
+import { Link } from 'react-router-dom';
+import { useAuth } from '../../lib/auth';
 import { Button } from '../ui/Button';
 
 // Mid-run input: anything typed here reaches the agent before its next step.
 export function NoteBox({ incident }) {
-  const { person } = useOnCall();
+  const { user } = useAuth();
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const live = incident.status === 'investigating';
@@ -17,7 +18,7 @@ export function NoteBox({ incident }) {
     if (text.trim().length < 3) return;
     setBusy(true);
     try {
-      const { delivered } = await api.post(`/incidents/${incident._id}/notes`, { author: person, text: text.trim() });
+      const { delivered } = await api.post(`/incidents/${incident._id}/notes`, { text: text.trim() });
       toast.success(delivered ? 'Sent. The agent will read it before its next step.' : 'Saved to the incident timeline.');
       setText('');
     } catch (err) {
@@ -26,6 +27,10 @@ export function NoteBox({ incident }) {
       setBusy(false);
     }
   };
+
+  if (!user) {
+    return <p className="text-[13px] text-muted"><Link to="/login" className="text-accent underline underline-offset-2">Sign in</Link> to send the agent information it can’t see.</p>;
+  }
 
   return (
     <form onSubmit={send} className="flex gap-2 items-center">

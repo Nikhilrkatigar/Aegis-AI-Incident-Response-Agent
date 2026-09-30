@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Bomb, RotateCcw, MessageSquarePlus } from 'lucide-react';
 import { api } from '../lib/api';
-import { useOnCall } from '../lib/oncall';
+import { Link } from 'react-router-dom';
+import { useAuth } from '../lib/auth';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
 import { Pill } from '../components/ui/Pill';
@@ -25,14 +26,13 @@ function Switch({ checked, onChange, label, id }) {
 }
 
 function ManualReport() {
-  const { person } = useOnCall();
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const submit = async (e) => {
     e.preventDefault();
     setBusy(true);
     try {
-      await api.post('/incidents', { description: text.trim(), reporter: person });
+      await api.post('/incidents', { description: text.trim() });
       toast.success('Incident opened. Aegis is looking into it.');
       setText('');
     } catch (err) {
@@ -61,7 +61,7 @@ function ManualReport() {
 }
 
 export default function LabPage() {
-  const { person } = useOnCall();
+  const { user } = useAuth();
   const [lab, setLab] = useState(null);
   const [error, setError] = useState(null);
   const [pending, setPending] = useState(null);
@@ -106,6 +106,12 @@ export default function LabPage() {
           <Button variant="danger" size="sm" icon={RotateCcw} onClick={() => setConfirmReset(true)}>Reset PayFlow</Button>
         </div>
 
+        {!user && (
+          <p className="mt-4 panel px-4 py-3 text-[13px]" role="note">
+            <Link to="/login?next=/lab" className="text-accent font-medium underline underline-offset-2">Sign in</Link> to inject faults. Every change here is recorded in the audit log under your name.
+          </p>
+        )}
+
         <ul className="mt-4 panel divide-y divide-line">
           {lab.scenarios.map((s) => (
             <li key={s.id} className="px-4 py-3 grid grid-cols-[1fr_auto] gap-4 items-center">
@@ -123,7 +129,7 @@ export default function LabPage() {
                 variant={s.active ? 'ghost' : 'secondary'}
                 disabled={s.active}
                 busy={pending === s.id}
-                onClick={() => run(s.id, () => api.post('/lab/faults', { scenario: s.id, operator: person }), `${s.title} injected. Watch the Incidents page.`)}
+                onClick={() => run(s.id, () => api.post('/lab/faults', { scenario: s.id }), `${s.title} injected. Watch the Incidents page.`)}
               >
                 {s.active ? 'Running' : 'Inject'}
               </Button>
@@ -144,7 +150,7 @@ export default function LabPage() {
                   id={`chaos-${c.id}`}
                   label={c.label}
                   checked={c.enabled}
-                  onChange={(enabled) => run(c.id, () => api.post('/lab/chaos', { toggle: c.id, enabled, operator: person }), `${enabled ? 'On' : 'Off'}: ${c.label}`)}
+                  onChange={(enabled) => run(c.id, () => api.post('/lab/chaos', { toggle: c.id, enabled }), `${enabled ? 'On' : 'Off'}: ${c.label}`)}
                 />
               </li>
             ))}
@@ -164,7 +170,7 @@ export default function LabPage() {
         footer={
           <>
             <Button data-close onClick={() => setConfirmReset(false)}>Cancel</Button>
-            <Button variant="danger" busy={pending === 'reset'} onClick={() => run('reset', () => api.post('/lab/reset', { operator: person }), 'PayFlow reset. All faults cleared.').then(() => setConfirmReset(false))}>Reset</Button>
+            <Button variant="danger" busy={pending === 'reset'} onClick={() => run('reset', () => api.post('/lab/reset'), 'PayFlow reset. All faults cleared.').then(() => setConfirmReset(false))}>Reset</Button>
           </>
         }
       >

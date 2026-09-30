@@ -6,6 +6,8 @@ import { clock, pct, usd, ACTION_LABEL, CATEGORY_LABEL } from '../lib/format';
 import { Button } from '../components/ui/Button';
 import { Loading, Empty, ErrorState } from '../components/ui/States';
 
+const OUTCOME = { resolved: 'Resolved', escalated: 'Escalated to on-call', out_of_scope: 'Closed as out of scope' };
+
 function Section({ title, children }) {
   return (
     <section className="mt-6">
@@ -47,7 +49,7 @@ export default function ReportPage() {
       </div>
 
       <article className="max-w-3xl mx-auto mt-4 panel px-8 py-7 text-[14px]">
-        <p className="font-mono text-[12.5px] text-muted">{incident.number} · {incident.severity} · {r.outcome === 'resolved' ? 'Resolved' : 'Escalated'} in {r.durationMin} min</p>
+        <p className="font-mono text-[12.5px] text-muted">{incident.number} · {incident.severity} · {OUTCOME[r.outcome] || r.outcome} in {r.durationMin} min</p>
         <h1 className="mt-1 text-[22px] font-semibold leading-tight">{r.rootCause || incident.title}</h1>
         <p className="mt-3 text-[15px] leading-relaxed">{r.summary}</p>
 
@@ -65,6 +67,21 @@ export default function ReportPage() {
             </>
           )}
         </Section>
+
+        {(r.decisions?.length > 0 || r.closingNote) && (
+          <Section title="Human decisions">
+            <ul className="space-y-1">
+              {r.decisions?.map((x, i) => (
+                <li key={i}>
+                  <span className="font-medium">{x.by}</span> {x.decision} {ACTION_LABEL[x.action?.type]} on {x.action?.target}
+                  {x.at && <span className="text-muted"> at {clock(x.at)}</span>}
+                  {x.reason && <div className="text-[13px] text-muted">“{x.reason}”</div>}
+                </li>
+              ))}
+              {r.closingNote && <li><span className="font-medium">Closed by on-call:</span> {r.closingNote}</li>}
+            </ul>
+          </Section>
+        )}
 
         <Section title="Actions">
           {r.actions.length ? (

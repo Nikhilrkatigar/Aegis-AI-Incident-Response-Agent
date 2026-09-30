@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { FlaskConical, Gauge, ScrollText, ShieldCheck, Siren } from 'lucide-react';
+import { FlaskConical, Gauge, LogIn, LogOut, ScrollText, ShieldCheck, Siren } from 'lucide-react';
 import { useLive } from '../lib/live';
-import { useOnCall, ROSTER } from '../lib/oncall';
+import { useAuth } from '../lib/auth';
 import { api } from '../lib/api';
 
 const NAV = [
@@ -90,8 +90,65 @@ function useNewIncidentToasts() {
   }, [incidents, navigate]);
 }
 
+// Off by default: every action waits for an approver. Only approvers can turn it on.
+function AutopilotSwitch() {
+  const { autopilot, setAutopilot } = useLive();
+  const { user } = useAuth();
+  const [busy, setBusy] = useState(false);
+  const canChange = user?.role === 'approver';
+  const toggle = async () => {
+    setBusy(true);
+    try {
+      const r = await api.put('/settings/autopilot', { enabled: !autopilot });
+      setAutopilot(r.autopilot);
+      toast.success(r.autopilot ? 'Autopilot on: low-risk actions on auth and session-cache at 80%+ confidence run without approval.' : 'Autopilot off: every action waits for an approver.');
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="flex items-center gap-2 text-[12.5px]" title="Autopilot only ever covers restart, scale and clear-cache on tier-1/2 services, at 80%+ confidence, when the AI agent (not the rule engine) made the call. Everything else always needs a human.">
+      <span className="text-muted">Autopilot</span>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={autopilot}
+        aria-label="Autopilot for low-risk actions"
+        disabled={!canChange || busy}
+        onClick={toggle}
+        className={`relative h-5 w-9 rounded-full transition-colors ${autopilot ? 'bg-accent' : 'bg-line'} ${canChange ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'}`}
+      >
+        <span className={`absolute top-0.5 left-0.5 size-4 rounded-full bg-surface shadow-card transition-transform duration-150 ${autopilot ? 'translate-x-4' : ''}`} />
+      </button>
+      <span className={autopilot ? 'text-accent font-medium' : 'text-muted'}>{autopilot ? 'on' : 'off'}</span>
+    </div>
+  );
+}
+
+function UserMenu() {
+  const { user, logout } = useAuth();
+  const location = useLocation();
+  if (!user) {
+    return (
+      <Link to={`/login?next=${encodeURIComponent(location.pathname)}`} className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-card bg-accent text-on-accent text-[13px] font-medium">
+        <LogIn size={14} aria-hidden /> Sign in
+      </Link>
+    );
+  }
+  return (
+    <div className="flex items-center gap-2 text-[12.5px]">
+      <span className="text-ink font-medium">{user.name}</span>
+      <span className="px-1.5 h-5 inline-flex items-center rounded bg-sunken text-muted text-[11.5px]">{user.role}</span>
+      <button type="button" onClick={() => { logout(); toast.success('Signed out'); }} className="text-muted hover:text-ink cursor-pointer" aria-label="Sign out">
+        <LogOut size={15} strokeWidth={1.75} aria-hidden />
+      </button>
+    </div>
+  );
+}
+
 export function Shell() {
-  const { person, setPerson } = useOnCall();
   useNewIncidentToasts();
   return (
     <div className="min-h-screen grid grid-cols-[200px_1fr] print:block">
@@ -125,16 +182,10 @@ export function Shell() {
           <span className="text-[12.5px] text-muted">simulated</span>
           <span className="text-line" aria-hidden>|</span>
           <span className="text-[12.5px]"><Freshness /></span>
-          <label className="ml-auto flex items-center gap-2 text-[12.5px] text-muted">
-            On call
-            <select
-              value={person}
-              onChange={(e) => setPerson(e.target.value)}
-              className="h-7 px-2 rounded-card border border-line bg-surface text-ink text-[13px] cursor-pointer"
-            >
-              {ROSTER.map((p) => <option key={p}>{p}</option>)}
-            </select>
-          </label>
+          <div className="ml-auto flex items-center gap-4">
+            <AutopilotSwitch />
+            <UserMenu />
+          </div>
         </header>
         <main className="flex-1 min-h-0">
           <Outlet />
