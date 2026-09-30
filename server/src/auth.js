@@ -15,16 +15,20 @@ const TICKET_TTL_MS = 30_000;
 const DUMMY_HASH = bcrypt.hashSync(randomBytes(16).toString('hex'), 10);
 
 export const ROSTER = [
+  { username: 'judge', name: 'Judge', role: 'approver' },
   { username: 'nikhil', name: 'Nikhil Katigar', role: 'approver' },
   { username: 'adithya', name: 'Adithya V Valke', role: 'approver' },
   { username: 'priya', name: 'Priya Nair', role: 'responder' },
 ];
 
+// Adds any roster member the database does not have yet, so new demo accounts reach existing deploys.
 export async function seedUsers() {
-  if (await User.countDocuments()) return 0;
+  const existing = new Set((await User.find({}, 'username')).map((u) => u.username));
+  const missing = ROSTER.filter((u) => !existing.has(u.username));
+  if (!missing.length) return 0;
   const passwordHash = await bcrypt.hash(config.SEED_USER_PASSWORD, 10);
-  await User.insertMany(ROSTER.map((u) => ({ ...u, passwordHash })));
-  return ROSTER.length;
+  await User.insertMany(missing.map((u) => ({ ...u, passwordHash })));
+  return missing.length;
 }
 
 // ponytail: lockout counters live in memory (one API instance); move to Mongo/Redis if we scale out.

@@ -6,10 +6,12 @@ import { toast } from 'sonner';
 import { useAuth } from '../lib/auth';
 import { Button } from '../components/ui/Button';
 import { ThemeToggle } from '../components/ThemeToggle';
+import { resetTour } from '../components/Tour';
 
 // Published in the README on purpose so judges can sign in. Not for real deployments.
 const DEMO_PASSWORD = 'payflow-oncall';
 const DEMO_ACCOUNTS = [
+  { username: 'judge', role: 'approver · guided' },
   { username: 'nikhil', role: 'approver' },
   { username: 'adithya', role: 'approver' },
   { username: 'priya', role: 'responder' },
@@ -164,6 +166,7 @@ export default function LoginPage() {
     setError(null);
     try {
       const u = await login(username.trim(), password);
+      resetTour();
       toast.success(`Signed in as ${u.name} (${u.role})`);
       navigate(next, { replace: true });
     } catch (err) {
@@ -236,7 +239,7 @@ export default function LoginPage() {
               Demo accounts
               <span aria-hidden className="flex-1 h-px bg-line" />
             </legend>
-            <div className="mt-3 grid grid-cols-3 gap-2">
+            <div className="mt-3 grid grid-cols-2 gap-2">
               {DEMO_ACCOUNTS.map((a) => {
                 const picked = username === a.username;
                 return (
@@ -253,7 +256,7 @@ export default function LoginPage() {
                 );
               })}
             </div>
-            <p className="mt-2.5 text-[12px] text-muted leading-relaxed">Picking one fills the form. Approvers can approve fixes; the responder cannot.</p>
+            <p className="mt-2.5 text-[12px] text-muted leading-relaxed">Picking one fills the form. Judging? Use judge: a short guide walks you through a full incident.</p>
           </fieldset>
         </motion.form>
       </main>

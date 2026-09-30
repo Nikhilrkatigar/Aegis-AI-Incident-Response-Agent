@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Compass, Hourglass, X } from 'lucide-react';
+import { useAuth } from '../lib/auth';
 import { Button } from './ui/Button';
 
 // Each step spotlights one element (by its data-tour name or a selector) and blurs the rest.
@@ -24,7 +25,13 @@ const PAD = 6;
 const CARD_W = 320;
 const CARD_H = 200; // rough height, only used to decide which side has room
 
-// A fresh tab is a fresh judge: the tour starts on the first sign-in of every session.
+// Every sign-in is a fresh judge: the guide starts from the top.
+export function resetTour() {
+  try {
+    sessionStorage.removeItem(KEY);
+  } catch { /* storage blocked: nothing saved to clear */ }
+}
+
 function readStep() {
   try {
     const v = sessionStorage.getItem(KEY);
@@ -59,7 +66,13 @@ function cardPosition(h) {
 
 const centered = () => ({ top: window.innerHeight / 2 - CARD_H / 2, left: window.innerWidth / 2 - CARD_W / 2 });
 
+// Only the judge account gets the guide; the on-call accounts go straight to work.
 export function Tour() {
+  const { user } = useAuth();
+  return user?.username === 'judge' ? <Guide /> : null;
+}
+
+function Guide() {
   const [step, setStep] = useState(readStep); // -1 once finished or skipped
   const [spot, setSpot] = useState(null);
   const seen = useRef(false);
@@ -181,8 +194,8 @@ export function Tour() {
             </p>
             <div className="mt-3 flex items-center gap-2">
               {step > 0 && <Button size="sm" variant="ghost" onClick={() => go(step - 1)}>Back</Button>}
-              <Button size="sm" variant={s.click || waiting ? 'secondary' : 'primary'} className="ml-auto" onClick={() => go(step + 1)}>
-                {last ? 'Done' : s.click || waiting ? 'Skip step' : 'Next'}
+              <Button size="sm" variant="primary" className="ml-auto" onClick={() => go(step + 1)}>
+                {last ? 'Done' : 'Next'}
               </Button>
             </div>
           </motion.div>

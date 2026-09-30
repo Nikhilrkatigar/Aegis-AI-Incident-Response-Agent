@@ -64,6 +64,7 @@ Alert → Hypothesise → Investigate → Decide → (Approve) → Act → Verif
 
    | Username | Password | Role |
    |---|---|---|
+   | `judge` | `payflow-oncall` | approver, with a guided walkthrough of a full incident on every sign-in |
    | `nikhil` | `payflow-oncall` | approver: can approve and reject actions, and toggle autopilot |
    | `adithya` | `payflow-oncall` | approver |
    | `priya` | `payflow-oncall` | responder: can investigate and use the Fault Lab, cannot approve |
