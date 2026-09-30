@@ -1,0 +1,14 @@
+node_modules/
+.env
+.env.*
+!.env.example
+dist/
+*.log
+.DS_Store
+
+# Round 1 office docs and local tooling
+*.doc
+*.docx
+*.pdf
+~$*
+.claude/
