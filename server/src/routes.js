@@ -160,7 +160,7 @@ api.post('/incidents/:id/notes', route(async (req, res) => {
 
 api.get('/lab', (_req, res) => {
   ok(res, {
-    scenarios: Object.entries(SCENARIOS).map(([id, s]) => ({ id, title: s.title, target: s.target, brief: s.brief, active: live.faults.has(id) })),
+    scenarios: Object.entries(SCENARIOS).map(([id, s]) => ({ id, title: s.title, target: s.target, brief: s.brief, active: live.faults.has(id), startedAt: live.faultStart(id) ?? null })),
     chaos: Object.entries(CHAOS_TOGGLES).map(([id, label]) => ({ id, label, enabled: live.chaos.has(id) })),
   });
 });

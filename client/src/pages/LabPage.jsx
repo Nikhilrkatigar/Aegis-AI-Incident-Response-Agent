@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Bomb, RotateCcw, MessageSquarePlus } from 'lucide-react';
+import { ArrowRight, Bomb, RotateCcw, MessageSquarePlus } from 'lucide-react';
 import { api } from '../lib/api';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
+import { useLive } from '../lib/live';
+import { STATUS_LABEL } from '../lib/format';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
 import { Pill } from '../components/ui/Pill';
@@ -23,6 +25,39 @@ function Switch({ checked, onChange, label, id, disabled }) {
     >
       <span className={`absolute top-0.5 left-0.5 size-4 rounded-full bg-surface shadow-card transition-transform duration-150 ${checked ? 'translate-x-4' : ''}`} />
     </button>
+  );
+}
+
+// Alerts average over a 1-minute window, so a fault takes 10-70 s to trip one.
+// This line shows that wait is progress, then links the incident it opened.
+function FaultProgress({ startedAt }) {
+  const { incidents } = useLive();
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const seconds = Math.max(0, Math.round((now - startedAt) / 1000));
+  const incident = (incidents || []).find((i) => i.alerts?.some((a) => new Date(a.at).getTime() >= startedAt - 2000));
+
+  if (incident) {
+    return (
+      <p className="mt-1.5 flex items-center gap-2 text-[12.5px]" role="status">
+        <span aria-hidden className="size-1.5 rounded-full bg-warn" />
+        <span className="text-ink">Alert fired: <span className="font-mono">{incident.number}</span> {STATUS_LABEL[incident.status]?.toLowerCase()}</span>
+        <Link to={`/incidents/${incident._id}`} className="inline-flex items-center gap-1 text-accent font-medium hover:underline underline-offset-2">
+          Open incident <ArrowRight size={13} aria-hidden />
+        </Link>
+      </p>
+    );
+  }
+  return (
+    <p className="mt-1.5 flex items-center gap-2 text-[12.5px] text-muted tabular" role="status">
+      <span aria-hidden className="size-1.5 rounded-full bg-danger" />
+      {seconds < 90
+        ? `Injected ${seconds}s ago. Metrics are degrading; the alert trips once the 1-minute average crosses its threshold (usually 10–70 s).`
+        : `No new incident after ${seconds}s. A related open incident may have taken this alert; check Incidents.`}
+    </p>
   );
 }
 
@@ -75,6 +110,12 @@ export default function LabPage() {
     return () => clearInterval(id);
   }, [load]);
 
+  // Show the fault as running at once; the request and the refresh catch up behind it.
+  const inject = (id, title) => {
+    setLab((l) => ({ ...l, scenarios: l.scenarios.map((s) => (s.id === id ? { ...s, active: true, startedAt: Date.now() } : s)) }));
+    return run(id, () => api.post('/lab/faults', { scenario: id }), `${title} injected. The alert usually fires within a minute.`);
+  };
+
   const run = async (key, fn, success) => {
     setPending(key);
     try {
@@ -83,6 +124,7 @@ export default function LabPage() {
       await load();
     } catch (e) {
       toast.error(e.message);
+      load();
     } finally {
       setPending(null);
     }
@@ -123,6 +165,7 @@ export default function LabPage() {
                   {s.active && <Pill tone="danger">active</Pill>}
                 </div>
                 <p className="mt-0.5 text-[13px] text-muted leading-snug">{s.brief}</p>
+                {s.active && s.startedAt && <FaultProgress startedAt={s.startedAt} />}
               </div>
               <Button
                 size="sm"
@@ -130,8 +173,7 @@ export default function LabPage() {
                 variant={s.active ? 'ghost' : 'secondary'}
                 disabled={s.active || !user}
                 title={user ? '' : 'Sign in to inject faults'}
-                busy={pending === s.id}
-                onClick={() => run(s.id, () => api.post('/lab/faults', { scenario: s.id }), `${s.title} injected. Watch the Incidents page.`)}
+                onClick={() => inject(s.id, s.title)}
               >
                 {s.active ? 'Running' : 'Inject'}
               </Button>
