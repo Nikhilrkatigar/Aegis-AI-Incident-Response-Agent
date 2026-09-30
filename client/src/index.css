@@ -8,6 +8,7 @@
   --color-ink: #24211d;
   --color-muted: #6f675d;
   --color-accent: #3f5d4e;
+  --color-accent-hover: #35503f;
   --color-accent-soft: #e4ebe6;
   --color-on-accent: #fbf9f6;
   --color-ok: #3f6f52;
@@ -19,14 +20,38 @@
 
   --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", monospace;
+  --font-script: "Great Vibes", cursive;
 
   --radius-card: 6px;
   --shadow-card: 0 1px 2px rgb(36 33 29 / 0.06);
 }
 
+/* Same warm neutrals, dimmed. The accent gets lighter so it keeps 4.5:1 on dark surfaces. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-bg: #171512;
+  --color-surface: #1e1b18;
+  --color-sunken: #141210;
+  --color-line: #332f29;
+  --color-ink: #ebe5db;
+  --color-muted: #a39a8d;
+  --color-accent: #8fb09e;
+  --color-accent-hover: #a2c0af;
+  --color-accent-soft: #25302a;
+  --color-on-accent: #141210;
+  --color-ok: #86b394;
+  --color-warn: #d6a852;
+  --color-warn-soft: #362c18;
+  --color-danger: #de897b;
+  --color-danger-soft: #3a2420;
+  --color-info: #a0b1c1;
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.35);
+}
+
 @layer base {
   html {
     font-size: 14px;
+    color-scheme: light;
   }
   body {
     @apply bg-bg text-ink font-sans antialiased;
@@ -44,6 +69,33 @@
   font-variant-numeric: tabular-nums;
 }
 
+@utility dot-grid {
+  background-image: radial-gradient(var(--color-line) 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+
 @utility panel {
   @apply bg-surface border border-line rounded-card shadow-card;
+}
+
+/* Intro: each letter's outline is traced, then filled, like a hand writing it. */
+@keyframes intro-write {
+  from { stroke-dashoffset: 1600; fill-opacity: 0; }
+  70% { stroke-dashoffset: 0; fill-opacity: 0; }
+  to { stroke-dashoffset: 0; fill-opacity: 1; }
+}
+
+.intro-letter {
+  stroke-dasharray: 1600;
+  stroke-dashoffset: 1600;
+  fill-opacity: 0;
+  animation: intro-write 1.1s cubic-bezier(0.33, 1, 0.68, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .intro-letter {
+    animation: none;
+    stroke-dashoffset: 0;
+    fill-opacity: 1;
+  }
 }

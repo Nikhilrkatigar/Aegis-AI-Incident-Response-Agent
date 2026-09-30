@@ -56,3 +56,24 @@ Commit after every working slice (`feat: ...`). Deploy from slice 0 onwards, nev
 3. 21st.dev API key (21st.dev/mcp); not blocking, I'll start with plain Tailwind
 4. An empty GitHub repo URL (or confirm I should create it with `gh`)
 5. Vercel and Render accounts linked to that GitHub
+
+## Stretch: the remaining 4 fault scenarios (12 of 12, as CONCEPT.md promises)
+
+Each one is chosen so that a plausible wrong fix exists, which keeps the benchmark honest.
+
+| Scenario | What breaks | Correct fix | Tempting wrong fix |
+|---|---|---|---|
+| Disk full | payments-db WAL archiving to S3 fails (expired key); pg_wal fills the 200 GiB volume, writes fail with `No space left on device` | `expand_volume` payments-db (new action, high risk) | kill DB sessions (the connection errors look similar) |
+| Cache failure | session-cache hits maxmemory with `noeviction` after a TTL-less key rollout; auth writes fail with `OOM command not allowed` | `clear_cache` session-cache (tier 2, low risk: the one autopilot-eligible case) | restart auth (the misleading-alert memory) |
+| Dependency outage | The external PSP returns 503s; payment errors, but every internal service is healthy | `failover` payment to the secondary PSP (new action, high risk) | roll back payment, restart payment |
+| Traffic surge | A legitimate flash sale triples checkout traffic from many IPs; payment saturates | `scale` payment | block IPs (it is not an attack: 200s from thousands of addresses, not 401s from three /24s) |
+
+Steps:
+1. `server/src/payflow/scenarios.js`: the 4 scenarios (effects, realistic log lines, change records).
+2. `server/src/agent/catalog.js`, `simulator.js`, `prompts/investigator.md`, `client/src/lib/format.js`: two new actions, `expand_volume` and `failover`, both high risk.
+3. `server/src/agent/baseline.js`: runbook rules for the new faults, as a team would write them.
+4. `server/src/incidents/report.js`: prevention items for the 3 new categories.
+5. Tests: the existing loop in `simulator.test.js` picks the new scenarios up (alert fires, right fix recovers, wrong fix does not). Run `npm test`.
+6. README scenario table. Re-run the rule-baseline benchmark. The agent benchmark uses the model chain, so it runs only if you say so.
+
+Fault Lab, benchmark and Lab API list scenarios from `SCENARIOS`, so no UI change is needed beyond the action labels.

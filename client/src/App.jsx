@@ -5,6 +5,7 @@ import { LiveProvider } from './lib/live';
 import { AuthProvider, useAuth } from './lib/auth';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Shell } from './components/Shell';
+import { Intro } from './components/Intro';
 import IncidentsPage from './pages/IncidentsPage';
 import ReportPage from './pages/ReportPage';
 import LabPage from './pages/LabPage';
@@ -49,6 +50,7 @@ export default function App() {
           </BrowserRouter>
         </AuthProvider>
       </ErrorBoundary>
+      <Intro />
       <Toaster
         position="top-right"
         offset={{ top: 68, right: 16 }}

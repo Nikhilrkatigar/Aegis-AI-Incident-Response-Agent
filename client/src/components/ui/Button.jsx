@@ -1,7 +1,7 @@
 import { Loader2 } from 'lucide-react';
 
 const VARIANTS = {
-  primary: 'bg-accent text-on-accent hover:bg-[#35503f] border border-accent',
+  primary: 'bg-accent text-on-accent hover:bg-accent-hover hover:border-accent-hover border border-accent',
   secondary: 'bg-surface text-ink border border-line hover:bg-sunken',
   danger: 'bg-surface text-danger border border-line hover:bg-danger-soft',
   ghost: 'text-muted hover:text-ink hover:bg-sunken border border-transparent',

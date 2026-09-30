@@ -6,6 +6,7 @@ import { useLive } from '../lib/live';
 import { useAuth } from '../lib/auth';
 import { api } from '../lib/api';
 import { ApprovalPrompt } from './ApprovalPrompt';
+import { ThemeToggle } from './ThemeToggle';
 
 const NAV = [
   { to: '/incidents', label: 'Incidents', icon: Siren },
@@ -248,6 +249,7 @@ export function Shell() {
           <div className="ml-auto flex items-center gap-4">
             <PendingApprovals />
             <AutopilotSwitch />
+            <ThemeToggle />
             <UserMenu />
           </div>
         </header>
