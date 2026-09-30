@@ -23,7 +23,7 @@ export function DesktopOnly({ children }) {
     );
 
   return (
-    <main className="min-h-dvh flex flex-col justify-center px-6 py-10">
+    <main className="min-h-dvh w-full max-w-[560px] mx-auto flex flex-col justify-center px-6 py-10">
       <div className="flex items-center gap-2">
         <ShieldCheck size={20} strokeWidth={2} className="text-accent" aria-hidden />
         <span className="font-semibold tracking-tight text-[16px]">Aegis</span>

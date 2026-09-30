@@ -53,8 +53,8 @@ export default function App() {
             </BrowserRouter>
           </AuthProvider>
         </ErrorBoundary>
-        <Intro />
       </DesktopOnly>
+      <Intro />
       <Toaster
         position="top-right"
         offset={{ top: 68, right: 16 }}

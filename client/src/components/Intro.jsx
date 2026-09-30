@@ -86,8 +86,8 @@ export function Intro() {
 
   useEffect(() => {
     if (phase !== 'loading') return;
-    // Wait for the script font so the greeting isn't traced in a fallback face (capped at 1.5s).
-    const timeout = new Promise((r) => setTimeout(r, 1500));
+    // Wait for the script font so the greeting isn't traced in a fallback face (capped at 3s for slow phones).
+    const timeout = new Promise((r) => setTimeout(r, 3000));
     Promise.race([document.fonts.load('132px "Great Vibes"'), timeout]).finally(() => setPhase('welcome'));
   }, [phase]);
 
