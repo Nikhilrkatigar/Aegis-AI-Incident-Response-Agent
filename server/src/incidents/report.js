@@ -42,7 +42,14 @@ export async function writeReport(incident) {
   const d = incident.diagnosis || {};
   const end = incident.resolvedAt || new Date();
   const durationMin = Math.max(1, Math.round((end - incident.openedAt) / 60_000));
-  const recovered = incident.status === 'resolved';
+  const outcome = incident.status; // resolved | escalated | out_of_scope
+  const recovered = outcome === 'resolved';
+  const executed = actions.filter((a) => a.status === 'executed');
+  const OUTCOME_TEXT = {
+    resolved: incident.verification?.recovered ? `recovered, verified for ${incident.verification.windowSec}s` : `resolved manually by on-call${incident.closingNote ? `: ${incident.closingNote}` : ''}`,
+    escalated: 'not resolved automatically, escalated to on-call',
+    out_of_scope: 'not a PayFlow production incident, closed without action',
+  };
 
   const lastVerify = steps.findLast((s) => s.kind === 'verify');
   const timeline = steps
@@ -57,18 +64,24 @@ export async function writeReport(incident) {
     evidence: d.evidence,
     ruledOut: d.ruled_out,
     actions: actions.map((a) => `${a.type} on ${a.target}: ${a.status} (${a.result})`),
-    outcome: recovered ? `recovered, verified for ${incident.verification?.windowSec}s` : 'not recovered, escalated to on-call',
+    decisions: incident.decisions.map((x) => `${x.by} ${x.decision} ${x.action?.type} on ${x.action?.target}${x.reason ? `: ${x.reason}` : ''}`),
+    outcome: OUTCOME_TEXT[outcome],
     durationMin,
   };
+  const lastFix = executed.at(-1);
   const narrative = (await narrate(facts)) || {
-    summary: `${incident.alerts[0]?.message || incident.title}. Root cause: ${d.summary || 'undetermined'}. ${recovered ? `Resolved by ${actions.at(-1)?.type || 'no action'} on ${actions.at(-1)?.target || '-'} and verified healthy` : 'Not resolved automatically; escalated to on-call'} after ${durationMin} min.`,
+    summary: `${incident.alerts[0]?.message || incident.title}. Root cause: ${d.summary || 'undetermined'}. ${
+      lastFix && recovered ? `Resolved by ${lastFix.type} on ${lastFix.target} and verified healthy` : OUTCOME_TEXT[outcome]
+    } after ${durationMin} min.`,
     prevention: PREVENTION[d.category] || ['Review the evidence with the owning team and add an alert for the earliest signal.'],
   };
 
   const report = {
     generatedAt: new Date(),
     durationMin,
-    outcome: recovered ? 'resolved' : 'escalated',
+    outcome,
+    closingNote: incident.closingNote,
+    decisions: incident.decisions.map((x) => ({ by: x.by, decision: x.decision, reason: x.reason, at: x.at, action: x.action && { type: x.action.type, target: x.action.target } })),
     summary: narrative.summary,
     rootCause: d.summary,
     category: d.category,
@@ -91,7 +104,7 @@ export async function writeReport(incident) {
       services: incident.services,
       category: d.category,
       rootCause: d.summary,
-      fix: actions.filter((a) => a.status === 'executed').map((a) => `${a.type} ${a.target}`).join(', '),
+      fix: executed.map((a) => `${a.type} ${a.target}`).join(', ') || incident.closingNote || 'manual',
       summary: narrative.summary,
     });
   }

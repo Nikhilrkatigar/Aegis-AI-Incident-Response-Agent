@@ -2,9 +2,11 @@
 // investigating -> (gate) -> awaiting_approval | executing -> verifying -> resolved
 //                                  |  rejected -> investigating (agent proposes something else)
 //                  not recovered -> investigating (attempt 2) -> escalated
+// Every terminal state (resolved, escalated, out_of_scope) gets an incident report.
 
-import { Incident, AgentStep, AuditLog } from '../models/index.js';
-import { ACTIONS, AUTO_ACT_MIN_CONFIDENCE } from '../agent/catalog.js';
+import { Incident, AgentStep, AuditLog, Action } from '../models/index.js';
+import { ACTIONS } from '../agent/catalog.js';
+import { decide } from '../agent/policy.js';
 import { createSession, investigate, addEvent } from '../agent/investigator.js';
 import { diagnoseByRules } from '../agent/baseline.js';
 import { llmAvailable } from '../agent/llm.js';
@@ -15,13 +17,15 @@ import { executeAction } from './executor.js';
 import { releaseLock } from './locks.js';
 import { verifyRecovery } from './verifier.js';
 import { writeReport } from './report.js';
+import { getAutopilot } from './settings.js';
 
 const MAX_FIX_ATTEMPTS = 2;
 const MAX_REJECTIONS = 2;
 export const OPEN_STATUSES = ['investigating', 'awaiting_approval', 'executing', 'verifying', 'needs_human'];
+const AEGIS = { name: 'aegis', role: 'system' };
 
-// ponytail: agent conversations live in memory; a server restart mid-incident loses the
-// conversation (steps survive in Mongo). Persist `messages` if that ever matters.
+// ponytail: agent conversations live in memory. After a restart an interrupted incident is
+// re-investigated from scratch (its steps survive in Mongo); persist `messages` if that ever matters.
 const sessions = new Map();
 const seqs = new Map();
 const key = (incident) => String(incident._id);
@@ -51,13 +55,26 @@ function sessionFor(incident) {
   return sessions.get(key(incident));
 }
 
-// Background work must never crash the process; failures become an escalation.
+// Background work must never crash the process; failures become an escalation with a report.
 function background(incident, fn) {
   fn().catch(async (err) => {
     logger.error({ err, incident: incident.number }, 'incident workflow failed');
-    await recordStep(incident, { kind: 'error', title: 'Workflow error, escalated to on-call', detail: err.message, isError: true });
-    await save(incident, { status: 'escalated' });
+    try {
+      await recordStep(incident, { kind: 'error', title: 'Workflow error, escalated to on-call', detail: err.message, isError: true });
+      await closeIncident(incident, 'escalated');
+    } catch (inner) {
+      logger.error({ err: inner, incident: incident.number }, 'could not escalate incident');
+    }
   });
+}
+
+export async function closeIncident(incident, status, by = AEGIS, note) {
+  await save(incident, { status, ...(status === 'resolved' && { resolvedAt: new Date() }), ...(note && { closingNote: note }) });
+  const report = await writeReport(incident);
+  await save(incident, { report });
+  await recordStep(incident, { kind: 'report', title: 'Incident report written', detail: report.summary });
+  await audit(by.name, 'report.written', incident, `${status}: ${report.summary.slice(0, 160)}`);
+  sessions.delete(key(incident));
 }
 
 export async function openIncident({ alerts, services, severity, source = 'alert', description, title }) {
@@ -87,7 +104,7 @@ export async function investigateIncident(incident) {
   let diagnosis;
   let mode = incident.mode;
   try {
-    if (mode === 'fallback' || !llmAvailable()) throw new Error(llmAvailable() ? 'Previous run used the rule engine' : 'No ANTHROPIC_API_KEY configured');
+    if (mode === 'fallback' || !llmAvailable()) throw new Error(llmAvailable() ? 'Previous run used the rule engine' : 'No model API key configured');
     diagnosis = await investigate(session, emit);
   } catch (err) {
     if (mode !== 'fallback') await emit({ kind: 'error', title: 'Agent unavailable, switching to rule-based diagnosis', detail: err.message, isError: true });
@@ -109,48 +126,45 @@ export async function investigateIncident(incident) {
 // The risk gate: code, not the model, decides what runs without a human.
 async function gate(incident, diagnosis) {
   const emit = emitFor(incident);
-  const { action, confidence, category } = diagnosis;
-  const risk = ACTIONS[action.type].risk;
-  const proposedAction = { ...action, risk, confidence };
-  const pct = Math.round(confidence * 100);
+  const { decision, risk, reason } = decide({ diagnosis, mode: incident.mode, autopilot: getAutopilot() });
+  const proposedAction = { ...diagnosis.action, risk, confidence: diagnosis.confidence, gateReason: reason };
+  const label = `${ACTIONS[diagnosis.action.type].label} on ${diagnosis.action.target}`;
 
-  if (category === 'out_of_scope') {
-    await emit({ kind: 'gate', title: 'Out of scope: not a PayFlow production incident', detail: 'Closed without action. Route to the owning team.' });
-    await save(incident, { proposedAction, status: 'out_of_scope' });
+  if (decision === 'out_of_scope') {
+    await emit({ kind: 'gate', title: 'Out of scope: not a PayFlow production incident', detail: reason });
+    await save(incident, { proposedAction });
+    await closeIncident(incident, 'out_of_scope');
     return;
   }
-  if (action.type === 'none') {
-    await emit({ kind: 'gate', title: `No safe action at ${pct}% confidence, handing to on-call`, detail: 'Aegis will not guess. The evidence so far is in the trace.' });
+  if (decision === 'needs_human') {
+    await emit({ kind: 'gate', title: 'Handing over to on-call', detail: reason });
     await save(incident, { proposedAction, status: 'needs_human' });
     return;
   }
-  if (risk === 'low' && confidence >= AUTO_ACT_MIN_CONFIDENCE) {
-    await emit({ kind: 'gate', title: `Low risk at ${pct}% confidence: executing automatically`, detail: `${ACTIONS[action.type].label} on ${action.target} is reversible and in the auto-approve list.` });
+  if (decision === 'auto') {
+    await emit({ kind: 'gate', title: `Autopilot: running ${label}`, detail: reason });
     await save(incident, { proposedAction });
-    await runAction(incident, proposedAction, 'aegis (auto-approved)');
+    await runAction(incident, proposedAction, { name: 'aegis (autopilot)', role: 'system' });
     return;
   }
-  const why = risk === 'high'
-    ? `${ACTIONS[action.type].label} is high risk. A human must approve it.`
-    : `Confidence ${pct}% is below ${AUTO_ACT_MIN_CONFIDENCE * 100}%, so even this low-risk action needs a human.`;
-  await emit({ kind: 'gate', title: `Waiting for approval: ${ACTIONS[action.type].label} on ${action.target}`, detail: why });
+  await emit({ kind: 'gate', title: `Waiting for approval: ${label}`, detail: reason });
   await save(incident, { proposedAction, status: 'awaiting_approval' });
 }
 
-export async function approve(incident, approver) {
+export async function approve(incident, user) {
   const action = incident.proposedAction;
-  incident.decisions.push({ at: new Date(), by: approver, decision: 'approved', action });
-  await recordStep(incident, { kind: 'decision', title: `${approver} approved ${ACTIONS[action.type].label} on ${action.target}` });
-  await audit(approver, 'action.approved', incident, `${action.type} ${action.target}`);
+  incident.decisions.push({ at: new Date(), by: user.name, decision: 'approved', action });
+  await recordStep(incident, { kind: 'decision', title: `${user.name} approved ${ACTIONS[action.type].label} on ${action.target}` });
+  await audit(user.name, 'action.approved', incident, `${action.type} ${action.target}`);
   await save(incident, { status: 'executing' });
-  background(incident, () => runAction(incident, action, approver));
+  background(incident, () => runAction(incident, action, user));
 }
 
-export async function reject(incident, approver, reason) {
+export async function reject(incident, user, reason) {
   const action = incident.proposedAction;
-  incident.decisions.push({ at: new Date(), by: approver, decision: 'rejected', reason, action });
-  await recordStep(incident, { kind: 'decision', title: `${approver} rejected ${ACTIONS[action.type].label} on ${action.target}`, detail: reason });
-  await audit(approver, 'action.rejected', incident, `${action.type} ${action.target}: ${reason}`);
+  incident.decisions.push({ at: new Date(), by: user.name, decision: 'rejected', reason, action });
+  await recordStep(incident, { kind: 'decision', title: `${user.name} rejected ${ACTIONS[action.type].label} on ${action.target}`, detail: reason });
+  await audit(user.name, 'action.rejected', incident, `${action.type} ${action.target}: ${reason}`);
 
   const rejections = incident.decisions.filter((d) => d.decision === 'rejected').length;
   if (rejections >= MAX_REJECTIONS || incident.mode === 'fallback') {
@@ -160,20 +174,27 @@ export async function reject(incident, approver, reason) {
       title: 'Handing over to on-call',
       detail: fallback && incident.mode !== 'fallback' ? `Suggested next option: ${fallback.type} on ${fallback.target}.` : 'No further automated options.',
     });
-    await save(incident, { status: 'escalated' });
+    await closeIncident(incident, 'escalated', user);
     return;
   }
-  addEvent(sessionFor(incident), `On-call engineer ${approver} REJECTED ${action.type} on ${action.target}. Reason: "${reason}". Re-rank your hypotheses and recommend a different, safer action.`);
+  addEvent(sessionFor(incident), `On-call engineer ${user.name} REJECTED ${action.type} on ${action.target}. Reason: "${reason}". Re-rank your hypotheses and recommend a different, safer action.`);
   await save(incident, { status: 'investigating' });
   background(incident, () => investigateIncident(incident));
 }
 
-export async function addNote(incident, author, text) {
-  await audit(author, 'note.added', incident, text);
+// A human takes an incident Aegis handed over and closes it with a note.
+export async function resolveByHuman(incident, user, note) {
+  await recordStep(incident, { kind: 'decision', title: `${user.name} resolved the incident manually`, detail: note });
+  await audit(user.name, 'incident.resolved_manually', incident, note);
+  await closeIncident(incident, 'resolved', user, note);
+}
+
+export async function addNote(incident, user, text) {
+  await audit(user.name, 'note.added', incident, text);
   if (incident.status === 'investigating' && incident.mode === 'agent') {
-    addEvent(sessionFor(incident), `Note from ${author}: ${text}`);
+    addEvent(sessionFor(incident), `Note from ${user.name}: ${text}`);
   } else {
-    await recordStep(incident, { kind: 'event', title: `Note from ${author}`, detail: text });
+    await recordStep(incident, { kind: 'event', title: `Note from ${user.name}`, detail: text });
   }
 }
 
@@ -198,16 +219,22 @@ async function runAction(incident, action, actor) {
   const result = await executeAction({
     incident,
     action,
-    actor,
+    actor: actor.name,
     onWaiting: () => emit({ kind: 'action', title: `Waiting: another incident holds the lock on ${action.target}` }),
   });
-  await audit(actor, result.ok ? 'action.executed' : 'action.failed', incident, `${action.type} ${action.target}: ${result.message}`);
+  await audit(actor.name, result.ok ? 'action.executed' : 'action.failed', incident, `${action.type} ${action.target}: ${result.message}`);
   await emit({ kind: 'action', title: result.ok ? result.message : `Action failed: ${result.message}`, isError: !result.ok });
   if (!result.ok) {
-    await save(incident, { status: 'escalated' });
+    await releaseLock(action.target, incident.number);
+    await closeIncident(incident, 'escalated');
     return;
   }
+  await verifyPhase(incident, action);
+}
 
+async function verifyPhase(incident, action) {
+  const emit = emitFor(incident);
+  let reinvestigate = false;
   try {
     await save(incident, { status: 'verifying' });
     const services = [...new Set([...incident.services, action.target])];
@@ -217,27 +244,34 @@ async function runAction(incident, action, actor) {
 
     if (verification.recovered) {
       await emit({ kind: 'verify', title: `Recovered: healthy for the last 30s of a ${verification.windowSec}s window`, detail: verification.summary });
-      await save(incident, { status: 'resolved', resolvedAt: new Date() });
-      await finish(incident);
-      return;
-    }
-    if (incident.attempts >= MAX_FIX_ATTEMPTS || incident.mode === 'fallback') {
+      await closeIncident(incident, 'resolved');
+    } else if (incident.attempts >= MAX_FIX_ATTEMPTS || incident.mode === 'fallback') {
       await emit({ kind: 'verify', title: 'Still unhealthy after the fix, escalating to on-call', detail: verification.summary, isError: true });
-      await save(incident, { status: 'escalated' });
-      await finish(incident);
-      return;
+      await closeIncident(incident, 'escalated');
+    } else {
+      addEvent(sessionFor(incident), `${action.type} on ${action.target} was executed but the platform has NOT recovered after ${verification.windowSec}s: ${verification.summary}. Your diagnosis was probably wrong or incomplete. Re-investigate.`);
+      reinvestigate = true;
     }
-    addEvent(sessionFor(incident), `${action.type} on ${action.target} was executed but the platform has NOT recovered after ${verification.windowSec}s: ${verification.summary}. Your diagnosis was probably wrong or incomplete. Re-investigate.`);
   } finally {
     await releaseLock(action.target, incident.number);
   }
-  await investigateIncident(incident);
+  if (reinvestigate) await investigateIncident(incident);
 }
 
-async function finish(incident) {
-  const report = await writeReport(incident);
-  await save(incident, { report });
-  await recordStep(incident, { kind: 'report', title: 'Incident report written', detail: report.summary });
-  await audit('aegis', 'report.written', incident, report.outcome);
-  sessions.delete(key(incident));
+// After a restart: pick up incidents whose in-memory workflow was lost.
+export async function resumeInterrupted() {
+  const stuck = await Incident.find({ status: { $in: ['investigating', 'executing', 'verifying'] } });
+  for (const incident of stuck) {
+    await recordStep(incident, { kind: 'note', title: 'Aegis restarted during this incident and picked it back up', detail: `It was ${incident.status.replace('_', ' ')}.` });
+    if (incident.status === 'investigating') {
+      background(incident, () => investigateIncident(incident));
+      continue;
+    }
+    // The action may or may not have run. The idempotency key stops a double execution,
+    // so the safe move is to check the platform rather than act again.
+    const executed = await Action.findOne({ incident: incident._id, status: 'executed' }).sort({ executedAt: -1 }).lean();
+    if (executed) background(incident, () => verifyPhase(incident, executed));
+    else background(incident, () => closeIncident(incident, 'escalated'));
+  }
+  return stuck.length;
 }

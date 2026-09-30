@@ -30,8 +30,9 @@ function sandbox(scenario, seed) {
   }
   sim.advance(15_000); // let correlated alerts appear, as the live coordinator would
   alerts = detectAlerts(sim);
+  // Neutral ID: nothing in what the agent sees may hint at the injected scenario.
   const incident = {
-    number: `BENCH-${scenario}-${seed}`,
+    number: `INC-${(seed * 7919 + scenario.length * 104729) % 9000 + 1000}`,
     source: 'alert',
     alerts: alerts.map((a) => ({ at: new Date(sim.now), service: a.service, message: a.message })),
     services: [...new Set(alerts.map((a) => a.service))],

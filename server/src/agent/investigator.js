@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { config } from '../config.js';
 import { chat, textOf } from './llm.js';
 import { TOOL_DEFINITIONS, TOOL_INPUTS } from './catalog.js';
+import { checkGrounding, UNGROUNDED_CONFIDENCE_CAP } from './grounding.js';
 import { getServiceStatus, getMetrics, getLogs, getRecentChanges, searchPastIncidents, fmtTime } from '../telemetry/tools.js';
 
 const SYSTEM = fs.readFileSync(fileURLToPath(new URL('../../prompts/investigator.md', import.meta.url)), 'utf8');
@@ -56,9 +57,11 @@ export function openingBrief(incident, sim) {
 }
 
 export function createSession(incident, sim) {
+  const brief = openingBrief(incident, sim);
   return {
     sim,
-    messages: [{ role: 'user', content: [{ type: 'text', text: openingBrief(incident, sim) }] }],
+    messages: [{ role: 'user', content: [{ type: 'text', text: brief }] }],
+    observations: [brief],
     pendingEvents: [],
     carry: null,
     usage: { inputTokens: 0, outputTokens: 0, usd: 0, llmCalls: 0, models: [] },
@@ -80,6 +83,7 @@ function flushEvents(session, emit) {
   const last = session.messages.at(-1);
   for (const text of session.pendingEvents) {
     last.content.push({ type: 'text', text });
+    session.observations.push(text);
     emit({ kind: 'event', title: 'New information reached the agent', detail: text });
   }
   session.pendingEvents = [];
@@ -100,6 +104,7 @@ async function runTool(session, block, emit) {
   try {
     output = await withTimeout(Promise.resolve(RUNNERS[block.name](session.sim, input)), config.TOOL_TIMEOUT_MS, block.name);
     content = await fitToBudget(output);
+    session.observations.push(JSON.stringify(output));
   } catch (err) {
     isError = true;
     content = `Tool failed: ${err.message}. Continue with other sources and account for the missing data.`;
@@ -118,6 +123,21 @@ async function runTool(session, block, emit) {
     latencyMs: Date.now() - started,
   });
   return { type: 'tool_result', tool_use_id: block.id, content, ...(isError && { is_error: true }) };
+}
+
+// A conclusion whose evidence does not match the tool output cannot carry high confidence.
+async function groundConclusion(conclusion, session, emit) {
+  const grounding = checkGrounding(conclusion.evidence, session.observations);
+  const capped = grounding.weak && conclusion.confidence > UNGROUNDED_CONFIDENCE_CAP;
+  await emit({
+    kind: 'note',
+    title: `Evidence check: ${grounding.grounded}/${grounding.checked} checkable facts found in tool output`,
+    detail: capped
+      ? `Too little of the evidence matches what the tools returned. Confidence capped at ${UNGROUNDED_CONFIDENCE_CAP * 100}% so a human decides.`
+      : grounding.items.filter((i) => i.status === 'unmatched').map((i) => `Not found: ${i.missing.join(', ')}`).join('; ') || 'Every checkable fact was found in the data the agent retrieved.',
+    isError: capped,
+  });
+  return { ...conclusion, confidence: capped ? UNGROUNDED_CONFIDENCE_CAP : conclusion.confidence, grounding };
 }
 
 /**
@@ -180,7 +200,7 @@ export async function investigate(session, emit, maxSteps = config.AGENT_MAX_STE
     if (conclusion) {
       // Keep the tool_result for `conclude` ready; it is sent with the next event if the run resumes.
       session.carry = [...results, { type: 'tool_result', tool_use_id: concludeId, content: 'Diagnosis recorded. Aegis will apply its risk rules.' }];
-      return conclusion;
+      return groundConclusion(conclusion, session, emit);
     }
     session.messages.push({ role: 'user', content: results });
   }

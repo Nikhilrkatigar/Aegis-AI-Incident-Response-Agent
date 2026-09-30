@@ -23,6 +23,7 @@ const incidentSchema = new Schema(
     decisions: [{ at: Date, by: String, decision: String, reason: String, action: Mixed, _id: false }],
     attempts: { type: Number, default: 0 },
     verification: Mixed,
+    closingNote: String,
     report: Mixed,
     usage: { inputTokens: Number, outputTokens: Number, usd: Number, llmCalls: Number, models: [String] },
     openedAt: { type: Date, default: Date.now },
@@ -116,6 +117,17 @@ const benchmarkSchema = new Schema(
   { timestamps: true },
 );
 
+const userSchema = new Schema({
+  username: { type: String, unique: true, lowercase: true, trim: true },
+  name: String,
+  role: { type: String, enum: ['approver', 'responder'] },
+  passwordHash: String,
+});
+
+const settingSchema = new Schema({ key: { type: String, unique: true }, value: Mixed }, { timestamps: true });
+
+export const User = model('User', userSchema);
+export const Setting = model('Setting', settingSchema);
 export const Incident = model('Incident', incidentSchema);
 export const AgentStep = model('AgentStep', stepSchema);
 export const Action = model('Action', actionSchema);

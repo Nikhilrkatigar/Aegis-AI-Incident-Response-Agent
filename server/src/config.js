@@ -24,6 +24,9 @@ const Env = z.object({
   TOOL_TIMEOUT_MS: z.coerce.number().int().default(5000),
   VERIFY_WINDOW_SEC: z.coerce.number().int().min(10).max(600).default(120),
   ACTION_SIGNING_SECRET: z.string().min(16).default('dev-only-signing-secret-change-me'),
+  JWT_SECRET: z.string().min(16).default('dev-only-session-secret-change-me'),
+  // Password for the seeded on-call accounts (see README). Change it for any real deployment.
+  SEED_USER_PASSWORD: z.string().min(8).default('payflow-oncall'),
 });
 
 // Treat `KEY=` lines from .env.example as unset so defaults apply.
@@ -35,7 +38,7 @@ if (!parsed.success) {
 
 export const config = parsed.data;
 
-if (config.NODE_ENV === 'production' && config.ACTION_SIGNING_SECRET.startsWith('dev-only')) {
-  console.error('ACTION_SIGNING_SECRET must be set in production');
+if (config.NODE_ENV === 'production' && (config.ACTION_SIGNING_SECRET.startsWith('dev-only') || config.JWT_SECRET.startsWith('dev-only'))) {
+  console.error('ACTION_SIGNING_SECRET and JWT_SECRET must be set in production');
   process.exit(1);
 }

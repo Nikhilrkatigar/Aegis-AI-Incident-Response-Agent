@@ -1,17 +1,19 @@
 // Runs the benchmark from the terminal and prints the comparison.
 // Usage: npm run bench            (rule baseline only, free)
-//        npm run bench -- --agent (baseline + agent, uses the API key and costs money)
+//        npm run bench -- --agent (baseline + agent, uses the model API keys)
+//        npm run bench -- --agent --seeds=1   (one seed per scenario: 8 agent cases, saves quota)
 import mongoose from 'mongoose';
 import { config } from '../src/config.js';
-import { startBenchmark, summarize } from '../src/benchmark/run.js';
+import { startBenchmark, summarize, SEEDS } from '../src/benchmark/run.js';
 import { BenchmarkRun } from '../src/models/index.js';
 import { seedIncidentMemory } from '../src/seed.js';
 
 const withAgent = process.argv.includes('--agent');
+const seedCount = Number(process.argv.find((a) => a.startsWith('--seeds='))?.split('=')[1] || SEEDS.length);
 await mongoose.connect(config.MONGODB_URI);
 await seedIncidentMemory();
 
-const { batch, total, finished } = await startBenchmark({ diagnosers: withAgent ? ['baseline', 'agent'] : ['baseline'] });
+const { batch, total, finished } = await startBenchmark({ diagnosers: withAgent ? ['baseline', 'agent'] : ['baseline'], seeds: SEEDS.slice(0, seedCount) });
 console.log(`Batch ${batch}: ${total} cases`);
 await finished;
 
