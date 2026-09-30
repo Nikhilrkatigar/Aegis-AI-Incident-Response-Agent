@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { FileText } from 'lucide-react';
 import { clock, duration, usd } from '../../lib/format';
 import { StatusPill, SeverityTag } from '../ui/Pill';
+import { Lifecycle } from './Lifecycle';
 
 const CLOSED = ['resolved', 'escalated', 'out_of_scope'];
 
@@ -48,6 +49,7 @@ export function IncidentHeader({ incident, stepCount }) {
           </div>
         )}
       </dl>
+      <Lifecycle incident={incident} />
     </header>
   );
 }

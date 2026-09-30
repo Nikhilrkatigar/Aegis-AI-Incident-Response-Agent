@@ -9,7 +9,7 @@ import { Modal } from '../components/ui/Modal';
 import { Pill } from '../components/ui/Pill';
 import { Loading, ErrorState } from '../components/ui/States';
 
-function Switch({ checked, onChange, label, id }) {
+function Switch({ checked, onChange, label, id, disabled }) {
   return (
     <button
       id={id}
@@ -17,15 +17,16 @@ function Switch({ checked, onChange, label, id }) {
       role="switch"
       aria-checked={checked}
       aria-label={label}
+      disabled={disabled}
       onClick={() => onChange(!checked)}
-      className={`relative h-5 w-9 shrink-0 rounded-full transition-colors cursor-pointer ${checked ? 'bg-warn' : 'bg-line'}`}
+      className={`relative h-5 w-9 shrink-0 rounded-full transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 ${checked ? 'bg-warn' : 'bg-line'}`}
     >
       <span className={`absolute top-0.5 left-0.5 size-4 rounded-full bg-surface shadow-card transition-transform duration-150 ${checked ? 'translate-x-4' : ''}`} />
     </button>
   );
 }
 
-function ManualReport() {
+function ManualReport({ signedIn }) {
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const submit = async (e) => {
@@ -55,7 +56,7 @@ function ManualReport() {
         placeholder="e.g. A merchant says payments feel slow since lunch"
         className="mt-2 w-full rounded-card border border-line bg-surface p-2 text-[13px] resize-none"
       />
-      <Button type="submit" size="sm" icon={MessageSquarePlus} busy={busy} disabled={text.trim().length < 10} className="mt-2">Open incident</Button>
+      <Button type="submit" size="sm" icon={MessageSquarePlus} busy={busy} disabled={!signedIn || text.trim().length < 10} title={signedIn ? '' : 'Sign in to file a report'} className="mt-2">Open incident</Button>
     </form>
   );
 }
@@ -103,7 +104,7 @@ export default function LabPage() {
               Inject a second fault mid-investigation to watch it re-plan.
             </p>
           </div>
-          <Button variant="danger" size="sm" icon={RotateCcw} onClick={() => setConfirmReset(true)}>Reset PayFlow</Button>
+          <Button variant="danger" size="sm" icon={RotateCcw} disabled={!user} title={user ? '' : 'Sign in to reset'} onClick={() => setConfirmReset(true)}>Reset PayFlow</Button>
         </div>
 
         {!user && (
@@ -127,7 +128,8 @@ export default function LabPage() {
                 size="sm"
                 icon={Bomb}
                 variant={s.active ? 'ghost' : 'secondary'}
-                disabled={s.active}
+                disabled={s.active || !user}
+                title={user ? '' : 'Sign in to inject faults'}
                 busy={pending === s.id}
                 onClick={() => run(s.id, () => api.post('/lab/faults', { scenario: s.id }), `${s.title} injected. Watch the Incidents page.`)}
               >
@@ -147,6 +149,7 @@ export default function LabPage() {
               <li key={c.id} className="px-4 py-3 flex items-center gap-3">
                 <label htmlFor={`chaos-${c.id}`} className="text-[13px] leading-snug flex-1">{c.label}</label>
                 <Switch
+                  disabled={!user}
                   id={`chaos-${c.id}`}
                   label={c.label}
                   checked={c.enabled}
@@ -159,7 +162,7 @@ export default function LabPage() {
 
         <section aria-labelledby="manual-title">
           <h2 id="manual-title" className="text-[12px] uppercase tracking-wide text-muted font-medium">Report an issue by hand</h2>
-          <div className="mt-2 panel p-4"><ManualReport /></div>
+          <div className="mt-2 panel p-4"><ManualReport signedIn={!!user} /></div>
         </section>
       </div>
 

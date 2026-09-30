@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Navigate, useParams } from 'react-router-dom';
 import { Radar } from 'lucide-react';
 import { useLive } from '../lib/live';
@@ -53,12 +53,32 @@ function IncidentDetail({ id }) {
   );
 }
 
+// While you watch the live end of the trace, new steps scroll into view. Scroll up to read
+// and it leaves you where you are.
+function useFollowLatest(ref, count) {
+  const last = useRef(count);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || count <= last.current) {
+      last.current = count;
+      return;
+    }
+    last.current = count;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 240;
+    if (!nearBottom) return;
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    requestAnimationFrame(() => el.scrollTo({ top: el.scrollHeight, behavior: reduce ? 'auto' : 'smooth' }));
+  }, [ref, count]);
+}
+
 export default function IncidentsPage() {
   const { id } = useParams();
   const { incidents, details } = useLive();
+  const center = useRef(null);
+  const current = id && details[id];
+  useFollowLatest(center, current?.steps.length || 0);
 
   if (!id && incidents?.length) return <Navigate to={`/incidents/${incidents[0]._id}`} replace />;
-  const current = id && details[id];
 
   return (
     <div className="grid grid-cols-[260px_1fr_340px] h-[calc(100vh-56px)]">
@@ -67,7 +87,7 @@ export default function IncidentsPage() {
         <IncidentList />
       </section>
 
-      <section className="overflow-y-auto bg-surface min-w-0" aria-label="Incident detail">
+      <section ref={center} className="overflow-y-auto bg-surface min-w-0" aria-label="Incident detail">
         {id ? (
           <IncidentDetail id={id} />
         ) : (

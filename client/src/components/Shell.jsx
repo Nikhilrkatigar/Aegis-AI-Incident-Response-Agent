@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { FlaskConical, Gauge, LogIn, LogOut, ScrollText, ShieldCheck, Siren } from 'lucide-react';
+import { ChevronDown, FlaskConical, Gauge, Hand, LogIn, LogOut, ScrollText, ShieldCheck, Siren } from 'lucide-react';
 import { useLive } from '../lib/live';
 import { useAuth } from '../lib/auth';
 import { api } from '../lib/api';
+import { ApprovalPrompt } from './ApprovalPrompt';
 
 const NAV = [
   { to: '/incidents', label: 'Incidents', icon: Siren },
@@ -49,13 +50,28 @@ function AgentMode() {
       </div>
     );
   }
+  const active = health.providers.find((p) => p.active) || health.providers[0];
+  const cooling = health.providers.filter((p) => p.coolingDownFor > 0).length;
   return (
-    <div className="text-[12px] leading-snug">
-      <p className="text-muted">Model chain</p>
-      <ol className="mt-1 space-y-1">
-        {health.providers.map((p) => (
+    <details className="text-[12px] leading-snug group">
+      <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden rounded-card -m-1 p-1 hover:bg-sunken">
+        <span className="flex items-center justify-between text-muted">
+          Model
+          <ChevronDown size={13} className="transition-transform duration-150 group-open:rotate-180" aria-hidden />
+        </span>
+        <span className="mt-0.5 flex items-center gap-1.5">
+          <span aria-hidden className="size-1.5 rounded-full bg-ok shrink-0" />
+          <span className="text-ink font-medium">{active.label}</span>
+        </span>
+        <span className="block font-mono text-[11px] text-muted truncate" title={active.model}>{active.model}</span>
+        <span className="block text-[11px] text-muted">
+          {health.providers.length - 1} backups{cooling > 0 && <span className="text-warn"> · {cooling} cooling down</span>}
+        </span>
+      </summary>
+      <ol className="mt-2 space-y-1 border-t border-line pt-2" aria-label="Failover order">
+        {health.providers.map((p, i) => (
           <li key={p.label + p.model} className="flex items-start gap-1.5" title={p.lastError || ''}>
-            <span aria-hidden className={`mt-1 size-1.5 rounded-full shrink-0 ${p.coolingDownFor ? 'bg-warn' : p.active ? 'bg-ok' : 'bg-line'}`} />
+            <span className="text-[11px] text-muted tabular w-3 shrink-0">{i + 1}</span>
             <span className="min-w-0">
               <span className={p.active ? 'text-ink font-medium' : 'text-muted'}>{p.label}</span>
               <span className="block font-mono text-[11px] text-muted truncate">{p.model}</span>
@@ -64,7 +80,51 @@ function AgentMode() {
           </li>
         ))}
       </ol>
-    </div>
+    </details>
+  );
+}
+
+// Keeps approvals visible wherever you are: a status chip, the tab title, and a toast
+// the moment an incident starts waiting on a human.
+function PendingApprovals() {
+  const { incidents } = useLive();
+  const navigate = useNavigate();
+  const previous = useRef(null);
+  const waiting = (incidents || []).filter((i) => i.status === 'awaiting_approval' || i.status === 'needs_human');
+
+  useEffect(() => {
+    document.title = waiting.length ? `(${waiting.length}) Needs you · Aegis` : 'Aegis · Incident Response';
+  }, [waiting.length]);
+
+  useEffect(() => {
+    if (!incidents) return;
+    const now = new Map(incidents.map((i) => [i._id, i.status]));
+    if (previous.current) {
+      for (const i of incidents) {
+        const was = previous.current.get(i._id);
+        if (was && was !== i.status && (i.status === 'awaiting_approval' || i.status === 'needs_human')) {
+          toast.warning(i.status === 'awaiting_approval' ? `${i.number} needs approval` : `${i.number} needs a human`, {
+            description: i.proposedAction?.type && i.status === 'awaiting_approval' ? `${i.proposedAction.type.replace('_', ' ')} on ${i.proposedAction.target}` : i.title,
+            action: { label: 'Review', onClick: () => navigate(`/incidents/${i._id}`) },
+          });
+        }
+      }
+    }
+    previous.current = now;
+  }, [incidents, navigate]);
+
+  if (!waiting.length) return null;
+  const first = waiting[waiting.length - 1];
+  return (
+    <Link
+      to={`/incidents/${first._id}`}
+      role="status"
+      aria-atomic="true"
+      className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-card bg-warn-soft text-warn text-[12.5px] font-medium hover:brightness-95"
+    >
+      <Hand size={13} strokeWidth={2} aria-hidden />
+      {waiting.length === 1 ? `${first.number} needs you` : `${waiting.length} incidents need you`}
+    </Link>
   );
 }
 
@@ -152,6 +212,9 @@ export function Shell() {
   useNewIncidentToasts();
   return (
     <div className="min-h-screen grid grid-cols-[200px_1fr] print:block">
+      <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:px-3 focus:py-2 focus:rounded-card focus:bg-surface focus:shadow-card focus:text-ink">
+        Skip to main content
+      </a>
       <aside className="border-r border-line bg-surface flex flex-col print:hidden">
         <div className="h-14 px-4 flex items-center gap-2 border-b border-line">
           <ShieldCheck size={18} strokeWidth={2} className="text-accent" aria-hidden />
@@ -183,13 +246,15 @@ export function Shell() {
           <span className="text-line" aria-hidden>|</span>
           <span className="text-[12.5px]"><Freshness /></span>
           <div className="ml-auto flex items-center gap-4">
+            <PendingApprovals />
             <AutopilotSwitch />
             <UserMenu />
           </div>
         </header>
-        <main className="flex-1 min-h-0">
+        <main id="main" tabIndex={-1} className="flex-1 min-h-0 outline-none">
           <Outlet />
         </main>
+        <ApprovalPrompt />
       </div>
     </div>
   );

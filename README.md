@@ -67,7 +67,7 @@ Alert → Hypothesise → Investigate → Decide → (Approve) → Act → Verif
 
 2. Go to **Fault Lab**, then **Inject** "Bad deployment".
 3. Within about 30 seconds an incident opens. Watch the agent's reasoning trace and hypotheses update live.
-4. It stops at **Approval needed**. Approve the rollback. Aegis executes it, verifies recovery and writes the report.
+4. Wherever you are in the app, a **permission prompt** pops up: *"Aegis wants to run an action: rollback → payment · high risk · 99% confident. Do you want to allow this?"* Press **1** to allow, or choose "No, and tell Aegis what to do instead" (Esc decides later). Aegis executes it, verifies recovery and writes the report. The same decision is available in the incident's **Risk gate · Human approval** panel.
 5. Then try **Misleading alert**. A harmless payment deploy lands right before the errors, so "roll back payment" is the obvious answer. It is wrong: the real cause is auth holding a stale Redis connection. The agent works this out from timing; the rule engine never does.
 
 Anyone can watch without signing in. Acting on anything needs an account, and every action is written to the **Audit log** under the signed-in user's name.
@@ -118,6 +118,13 @@ flowchart LR
 **The model chain** (`server/src/agent/llm.js`) sits behind one `chat()` call. Providers run in order: Claude (direct, if a key is set), then OpenRouter, then five Gemini Flash models (each with its own free quota), then Groq. When one hits a rate or credit limit, the next takes over mid-investigation with the same history, and the switch shows up in the trace. If every model fails, the rule engine takes over, so an incident is never left unhandled.
 
 **The rule engine** (`server/src/agent/baseline.js`) is the runbook automation a team would write without an agent. It is used twice: as the last-resort fallback, and as the benchmark baseline.
+
+### Human in the loop, in the UI
+
+- **Permission prompt.** When an incident needs approval, a prompt appears on whatever page you are on, like an AI coding agent asking before it runs a command: *Yes, run it* / *Yes, and don't ask again for low-risk fixes* (only offered for low-risk actions) / *No, and tell Aegis what to do instead*. Number keys choose, and Esc decides later.
+- **Risk gate panel** on every incident: what it is waiting for, who approved or rejected what and why, the running action, and the outcome.
+- **Lifecycle stepper** (Alert → Investigate → Approval → Action → Verify → Report), a **"needs you" chip** in the top bar, and a count in the browser tab title.
+- **Evidence check** marks on every piece of evidence (found / not found in tool output), and a **model chain** indicator showing which provider is answering.
 
 ## Safety model
 
@@ -343,3 +350,12 @@ Responses are `{ success: true, data }` or `{ success: false, message }`.
 - **Adithya V Valke** (JUPG26MCA12680, MCA): pitch, documentation, demo script and test scenarios
 
 All code was written during the hackathon. No UI kit or template was copied: every component is built from our own design tokens (`docs/DESIGN_SYSTEM.md`), with `lucide-react` icons and the `motion` library for transitions.
+
+Component sources, as the build guide requires:
+
+| Component | Source |
+|---|---|
+| `SegmentedControl` (incident filter) | Pattern adapted from 21st.dev "Segmented Tabs" by micka_design (#26923), found through the 21st.dev MCP; rebuilt on `motion` `layoutId` with our tokens, without its Base UI dependencies |
+| Everything else | Written for this project |
+
+The design system was generated with the ui-ux-pro-max skill and then filtered through our own rules (see `docs/DESIGN_SYSTEM.md`); its UX checklist drove the skip link, contextual live status for pending approvals, and the stepper's screen-reader text.
