@@ -25,7 +25,7 @@ export async function diagnoseByRules(sim, incident, emit = async () => {}) {
 
   const deploy = changes.find((c) => c.kind === 'deploy' && c.minutesAgo <= RECENT_DEPLOY_MIN);
   if (deploy) {
-    return conclude(`Errors follow the ${deploy.service} ${deploy.version} deploy ${deploy.minutesAgo} min ago`, 'bad_deploy', deploy.service,
+    return conclude(`Errors follow the ${deploy.service} ${deploy.version} deploy ${deploy.minutesAgo || '<1'} min ago`, 'bad_deploy', deploy.service,
       { type: 'rollback', target: deploy.service }, [`${deploy.service} ${deploy.version} deployed at ${deploy.time}`]);
   }
 

@@ -1,0 +1,49 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #f6f3ee;
+  --color-surface: #fbf9f6;
+  --color-sunken: #efeae2;
+  --color-line: #e3ddd3;
+  --color-ink: #24211d;
+  --color-muted: #6f675d;
+  --color-accent: #3f5d4e;
+  --color-accent-soft: #e4ebe6;
+  --color-on-accent: #fbf9f6;
+  --color-ok: #3f6f52;
+  --color-warn: #9a6a14;
+  --color-warn-soft: #f5ebd6;
+  --color-danger: #a4463a;
+  --color-danger-soft: #f4e2de;
+  --color-info: #4a5a6a;
+
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", monospace;
+
+  --radius-card: 6px;
+  --shadow-card: 0 1px 2px rgb(36 33 29 / 0.06);
+}
+
+@layer base {
+  html {
+    font-size: 14px;
+  }
+  body {
+    @apply bg-bg text-ink font-sans antialiased;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: var(--color-accent-soft);
+  }
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@utility panel {
+  @apply bg-surface border border-line rounded-card shadow-card;
+}
