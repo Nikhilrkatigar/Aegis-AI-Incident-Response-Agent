@@ -224,6 +224,117 @@ export const SCENARIOS = {
       return out;
     },
   },
+
+  disk_full: {
+    title: 'Disk full',
+    category: 'disk_full',
+    target: 'payments-db',
+    fixes: ['expand_volume:payments-db'],
+    brief: 'WAL archiving to S3 fails on an expired access key; pg_wal fills the 200 GiB volume and Postgres cannot write.',
+    rampSeconds: 30,
+    effect(ms, f) {
+      ms['payments-db'].diskPct += 39 * f;
+      ms['payments-db'].errRate += 0.24 * f * f;
+      ms['payments-db'].p95 += 380 * f;
+      ms.payment.errRate += 0.31 * f * f;
+      ms.payment.p95 += 700 * f;
+      ms.auth.errRate += 0.07 * f * f;
+    },
+    logs(rng, f) {
+      const out = [];
+      if (rng() < 0.5) out.push(['payments-db', 'warn', `archive command failed with exit code 1: aws s3 cp pg_wal/00000001000004A2000000${hex(rng, 2).toUpperCase()} s3://payflow-wal-archive/ -- InvalidAccessKeyId: The AWS Access Key Id you provided does not exist in our records`]);
+      if (f > 0.4) out.push(['payments-db', 'warn', `pg_wal is ${Math.round(120 + 70 * f)} GiB; WAL segments are not being removed until archived (archive_status: ${Math.round(4000 * f)} .ready files)`]);
+      for (let i = 0; i < Math.round(4 * f * f); i++) {
+        out.push(['payments-db', 'error', `PANIC: could not write to file "pg_wal/xlogtemp.${4000 + Math.floor(rng() * 900)}": No space left on device`]);
+        out.push(['payment', 'error', `PaymentRepository.create: ERROR: could not extend file "base/16384/24576": No space left on device ${reqId(rng)}`]);
+      }
+      if (f > 0.6 && rng() < 0.4) out.push(['auth', 'error', `session store: ERROR: could not write to file "pg_wal/xlogtemp.${4000 + Math.floor(rng() * 900)}": No space left on device`]);
+      return out;
+    },
+  },
+
+  cache_failure: {
+    title: 'Cache failure',
+    category: 'cache_failure',
+    target: 'session-cache',
+    fixes: ['clear_cache:session-cache'],
+    brief: 'A session migration writes 5.7M keys with no TTL; session-cache hits maxmemory under noeviction and rejects every write.',
+    rampSeconds: 30,
+    inject(sim) {
+      sim.recordEvent('session-cache', 'job session-migrate started: copying legacy sessions to sess:mig:* (batch 50000)');
+    },
+    effect(ms, f) {
+      ms['session-cache'].memMb += 3190 * f;
+      ms['session-cache'].errRate += 0.34 * f * f;
+      ms.auth.errRate += 0.17 * f * f;
+      ms.auth.p95 += 260 * f;
+      ms.payment.errRate += 0.07 * f * f;
+    },
+    logs(rng, f) {
+      const out = [];
+      if (f > 0.5) out.push(['session-cache', 'warn', `used_memory ${(3.1 + 0.95 * f).toFixed(2)}G of maxmemory 4.00G, maxmemory-policy noeviction; keys 6.1M, keys with TTL 0.4M`]);
+      for (let i = 0; i < Math.round(4 * f * f); i++) {
+        out.push(['auth', 'error', `session store: SETEX sess:${hex(rng, 16)} failed: OOM command not allowed when used memory > 'maxmemory' ${reqId(rng)}`]);
+        out.push(['auth', 'error', `POST /v1/login 500 session write failed ${reqId(rng)}`]);
+      }
+      if (f > 0.7 && rng() < 0.3) out.push(['session-cache', 'info', 'MEMORY USAGE sample: 5.7M keys match sess:mig:* with no expiry']);
+      return out;
+    },
+  },
+
+  dependency_outage: {
+    title: 'Dependency outage',
+    category: 'dependency_outage',
+    target: 'payment',
+    fixes: ['failover:payment'],
+    brief: 'The primary card processor (PSP) has a major outage; every charge times out or gets a 503. Nothing inside PayFlow changed.',
+    rampSeconds: 10,
+    effect(ms, f) {
+      ms.payment.errRate += 0.43 * f;
+      ms.payment.p95 += 2600 * f;
+      ms.gateway.errRate += 0.15 * f;
+    },
+    logs(rng, f) {
+      const out = [];
+      for (let i = 0; i < Math.round(5 * f); i++) {
+        out.push(['payment', 'error', rng() < 0.5
+          ? `PSP charge failed: 503 Service Unavailable (endpoint=api.psp.example, psp_request_id=psp_${hex(rng, 10)}) ${reqId(rng)}`
+          : `PSP charge failed: connect ETIMEDOUT api.psp.example:443 after 3000ms ${reqId(rng)}`]);
+      }
+      if (f > 0.5) out.push(['payment', 'warn', 'circuit breaker psp-primary OPEN (50/50 calls failed in 30s); secondary acquirer-b healthy, not enabled']);
+      if (f > 0.5 && rng() < 0.3) out.push(['payment', 'info', 'psp-health: status.psp.example reports "Major outage: card authorisations" (incident PSP-7731)']);
+      return out;
+    },
+  },
+
+  traffic_surge: {
+    title: 'Traffic surge',
+    category: 'traffic_surge',
+    target: 'payment',
+    fixes: ['scale:payment'],
+    brief: 'A flash-sale email goes to 1.2M customers; real checkout traffic triples and payment runs out of CPU. Not an attack.',
+    inject(sim) {
+      sim.recordEvent('gateway', 'campaign "Festive flash sale" email delivered to 1.2M customers (marketing, CAMP-118)');
+    },
+    effect(ms, f) {
+      ms.gateway.rps += 470 * f;
+      ms.gateway.errRate += 0.05 * f;
+      ms.payment.rps += 175 * f;
+      ms.payment.cpu += 56 * f;
+      ms.payment.p95 += 1950 * f;
+      ms.payment.errRate += 0.13 * f;
+      ms.auth.rps += 120 * f;
+      ms.auth.cpu += 14 * f;
+      ms['payments-db'].connections += 70 * f;
+    },
+    logs(rng, f) {
+      const out = [];
+      for (let i = 0; i < Math.round(4 * f); i++) out.push(['payment', 'error', `POST /v1/payments 503 overloaded: request queue full (inflight=256/256) ${reqId(rng)}`]);
+      if (f > 0.4) out.push(['payment', 'warn', `cpu throttled in ${Math.round(30 + 20 * f)}% of periods (limit 2 cores per pod, ${3} pods)`]);
+      if (f > 0.4 && rng() < 0.4) out.push(['gateway', 'info', `traffic ${(1 + 2.2 * f).toFixed(1)}x normal from ${(38000 + Math.floor(rng() * 6000)).toLocaleString('en-US')} distinct client IPs; top IP carries 0.02% of requests; 97% of logins succeed`]);
+      return out;
+    },
+  },
 };
 
 export const CORE_SCENARIOS = Object.keys(SCENARIOS);

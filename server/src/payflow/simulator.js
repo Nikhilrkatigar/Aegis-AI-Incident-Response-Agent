@@ -118,6 +118,14 @@ export class PayFlow {
       case 'clear_cache':
         message = `Flushed cache used by ${target}`;
         break;
+      case 'expand_volume':
+        message = `Grew the ${target} data volume from 200 GiB to 300 GiB (online resize)`;
+        break;
+      case 'failover':
+        message = target === 'payment'
+          ? 'Routed payment charges to the secondary acquirer (acquirer-b)'
+          : `Promoted the standby replica of ${target} to primary`;
+        break;
       case 'enable_maintenance':
         message = `Maintenance mode on for ${target}; requests get 503 with Retry-After`;
         break;
@@ -159,6 +167,7 @@ export class PayFlow {
       };
       if (b.connections) Object.assign(ms[s], { connections: b.connections * jitter(0.06), maxConnections: b.maxConnections });
       if (b.failedLogins !== undefined) ms[s].failedLogins = b.failedLogins * jitter(0.5);
+      if (b.diskPct !== undefined) ms[s].diskPct = b.diskPct * jitter(0.01);
     }
 
     for (const [id, state] of this.faults) {
@@ -175,6 +184,7 @@ export class PayFlow {
       m.cpu = clamp(m.cpu, 0, 100);
       m.memMb = clamp(m.memMb, 0, m.memLimitMb);
       if (m.connections !== undefined) m.connections = clamp(m.connections, 0, m.maxConnections);
+      if (m.diskPct !== undefined) m.diskPct = clamp(m.diskPct, 0, 100);
       this.metrics[s].push({ t: this.now, ...m });
     }
 
@@ -227,6 +237,7 @@ export class PayFlow {
     };
     if (last.connections !== undefined) Object.assign(out, { connections: last.connections, maxConnections: last.maxConnections });
     if (last.failedLogins !== undefined) out.failedLoginsPerSec = avg('failedLogins');
+    if (last.diskPct !== undefined) out.diskPct = last.diskPct;
     return out;
   }
 

@@ -15,7 +15,10 @@ const PREVENTION = {
   expired_certificate: ['Automate certificate renewal at 30 days before expiry', 'Alert on certificates expiring within 14 days'],
   misconfiguration: ['Require review for PSP_BASE_URL changes', 'Validate config against an environment allow-list before apply'],
   security_attack: ['Add login rate limiting per IP range and device fingerprint', 'Force password reset for accounts with successful logins from the attacking ranges'],
-  cache_failure: ['Make auth reconnect to the new Redis primary on failover (sentinel-aware client)', 'Alert on READONLY errors from Redis clients'],
+  cache_failure: ['Make auth reconnect to the new Redis primary on failover (sentinel-aware client)', 'Alert on Redis memory above 85% and on READONLY or OOM errors from clients', 'Require a TTL on every session key written by migration jobs'],
+  disk_full: ['Alert when WAL archiving fails and when pg_wal grows past 20% of the volume', 'Rotate the wal-archive S3 key through the secrets manager so Postgres picks it up'],
+  dependency_outage: ['Fail over to the secondary acquirer automatically when the PSP circuit breaker opens', 'Subscribe the on-call channel to the PSP status page'],
+  traffic_surge: ['Autoscale payment on CPU and queue depth', 'Have marketing announce large campaigns to on-call a day ahead'],
 };
 
 async function narrate(facts) {

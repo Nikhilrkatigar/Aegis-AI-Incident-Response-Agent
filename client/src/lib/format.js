@@ -37,6 +37,8 @@ export const ACTION_LABEL = {
   rotate_certificate: 'Rotate certificate',
   block_ips: 'Block IP ranges',
   kill_db_connections: 'Kill idle DB sessions',
+  expand_volume: 'Expand data volume',
+  failover: 'Fail over to standby',
   enable_maintenance: 'Maintenance mode',
   none: 'No automated action',
 };

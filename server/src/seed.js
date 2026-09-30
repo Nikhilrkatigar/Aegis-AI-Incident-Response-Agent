@@ -3,6 +3,13 @@ import { IncidentMemory } from './models/index.js';
 // Past incidents Aegis can learn from. Written the way the on-call team actually wrote them.
 const PAST_INCIDENTS = [
   {
+    number: 'INC-0962', date: '2026-07-29', services: ['payment', 'gateway'], category: 'dependency_outage',
+    title: 'Card charges failing during PSP outage',
+    rootCause: 'The primary PSP had a regional outage (their incident PSP-6120); charges returned 503 or timed out. Nothing inside PayFlow had changed.',
+    fix: 'failover payment',
+    summary: 'Rolled back payment first, which changed nothing and cost 9 minutes. Routing charges to acquirer-b restored checkout; switched back after the PSP recovered.',
+  },
+  {
     number: 'INC-0987', date: '2026-08-14', services: ['payment', 'gateway'], category: 'bad_deploy',
     title: 'payment 5xx after v2.11.0 deploy',
     rootCause: 'v2.11.0 lowered the PSP capture timeout to 500ms; captures under load timed out and returned 500.',

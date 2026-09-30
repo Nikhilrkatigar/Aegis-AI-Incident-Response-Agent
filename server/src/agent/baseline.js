@@ -35,6 +35,21 @@ export async function diagnoseByRules(sim, incident, emit = async () => {}) {
       { type: 'rotate_certificate', target: cert[1] }, ['TLS handshake failures: certificate has expired'], 0.8);
   }
 
+  if (/No space left on device/.test(errorText)) {
+    return conclude('payments-db volume is out of space', 'disk_full', 'payments-db',
+      { type: 'expand_volume', target: 'payments-db' }, ['Postgres: No space left on device'], 0.75);
+  }
+
+  if (/OOM command not allowed/.test(errorText)) {
+    return conclude('session-cache is at maxmemory and rejecting writes', 'cache_failure', 'session-cache',
+      { type: 'clear_cache', target: 'session-cache' }, ["Redis: OOM command not allowed when used memory > 'maxmemory'"], 0.7);
+  }
+
+  if (/PSP charge failed: (503|connect ETIMEDOUT)/.test(errorText)) {
+    return conclude('The card processor is failing charges', 'dependency_outage', 'payment',
+      { type: 'failover', target: 'payment' }, ['PSP returns 503 or times out'], 0.7);
+  }
+
   const auth = byName.auth?.last1m;
   if (auth?.failedLoginsPerMin > 300) {
     const ranges = logsOf('auth').topSourceRanges.map((r) => r.range);
@@ -67,6 +82,12 @@ export async function diagnoseByRules(sim, incident, emit = async () => {}) {
   if (slowDep) {
     return conclude(`${slowDep.service} is slow and ${symptom} depends on it`, 'slow_dependency', slowDep.service,
       { type: 'scale', target: slowDep.service }, [`${slowDep.service} p95 ${slowDep.last1m.p95Ms}ms`], 0.6);
+  }
+
+  const saturated = status.services.find((s) => s.last1m?.cpuPct > 75);
+  if (saturated) {
+    return conclude(`${saturated.service} is CPU-saturated`, 'traffic_surge', saturated.service,
+      { type: 'scale', target: saturated.service }, [`${saturated.service} CPU ${saturated.last1m.cpuPct}%`], 0.6);
   }
 
   return conclude('No runbook rule matched', 'unknown', symptom, { type: 'none', target: symptom }, ['No rule matched the current signals'], 0.2);

@@ -14,7 +14,7 @@ function healthOf(s) {
   if (!s) return 'no data';
   if (s.errRate > 0.3) return 'critical';
   const connectionsFull = s.connections !== undefined && s.connections / s.maxConnections > 0.95;
-  if (s.errRate > 0.05 || s.p95 > 1000 || s.memMb / s.memLimitMb > 0.9 || connectionsFull) return 'degraded';
+  if (s.errRate > 0.05 || s.p95 > 1000 || s.memMb / s.memLimitMb > 0.9 || connectionsFull || s.diskPct > 90) return 'degraded';
   return 'healthy';
 }
 
@@ -36,6 +36,7 @@ export function getServiceStatus(sim) {
         memory: `${round(s.memMb)}/${s.memLimitMb} MiB`,
         ...(s.connections !== undefined && { connections: `${round(s.connections)}/${s.maxConnections}` }),
         ...(s.failedLoginsPerSec !== undefined && { failedLoginsPerMin: round(s.failedLoginsPerSec * 60) }),
+        ...(s.diskPct !== undefined && { diskUsedPct: round(s.diskPct) }),
       },
     };
   });
@@ -66,6 +67,7 @@ export async function getMetrics(sim, { service, minutes }) {
       memMb: round(last.memMb),
       ...(last.connections !== undefined && { connections: round(last.connections) }),
       ...(last.failedLogins !== undefined && { failedLoginsPerMin: round(avg('failedLogins') * 60) }),
+      ...(last.diskPct !== undefined && { diskUsedPct: round(last.diskPct) }),
     };
   });
   return { service, bucket: `${bucketMs / 1000}s`, asOf: fmtTime(sim.now), series };

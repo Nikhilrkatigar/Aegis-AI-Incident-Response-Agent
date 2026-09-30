@@ -33,7 +33,9 @@ Recommend the smallest action that removes the cause, targeted at the service wh
 - rollback: undo a bad deployment. revert_config: undo a bad config change.
 - restart: clear bad in-process state (leaks, stale connections). scale: add capacity when a service is saturated by legitimate load.
 - rotate_certificate: expired or invalid certificates. kill_db_connections: sessions exhausting the database.
-- block_ips: malicious traffic (include the source CIDR ranges you saw). clear_cache: poisoned cache entries.
+- block_ips: malicious traffic (include the source CIDR ranges you saw). Legitimate traffic from many ordinary clients is not an attack: scale instead.
+- clear_cache: a cache full of bad or unexpiring entries. expand_volume: a data volume that is out of space.
+- failover: switch to the standby. On payment it routes charges to the secondary card processor (for an outage at the external PSP); on a datastore it promotes the replica.
 - enable_maintenance: last resort to stop damage when nothing else is safe.
 - none: when you are not confident or the issue is out of scope.
 

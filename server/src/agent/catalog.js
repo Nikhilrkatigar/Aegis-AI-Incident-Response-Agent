@@ -17,6 +17,8 @@ export const ACTIONS = {
   rotate_certificate: { risk: 'high', label: 'Rotate certificate' },
   block_ips: { risk: 'high', label: 'Block IP ranges' },
   kill_db_connections: { risk: 'high', label: 'Kill idle DB sessions' },
+  expand_volume: { risk: 'high', label: 'Expand data volume' },
+  failover: { risk: 'high', label: 'Fail over to standby' },
   enable_maintenance: { risk: 'high', label: 'Maintenance mode' },
   none: { risk: 'none', label: 'No automated action' },
 };

@@ -26,7 +26,7 @@ export const BASELINE = {
   gateway: { rps: 210, p95: 120, errRate: 0.002, cpu: 34, memMb: 420, memLimitMb: 1024 },
   payment: { rps: 82, p95: 210, errRate: 0.003, cpu: 41, memMb: 610, memLimitMb: 1536 },
   auth: { rps: 150, p95: 64, errRate: 0.002, cpu: 29, memMb: 540, memLimitMb: 2048, failedLogins: 0.3 },
-  'payments-db': { rps: 900, p95: 12, errRate: 0, cpu: 38, memMb: 7200, memLimitMb: 16384, connections: 184, maxConnections: 500 },
+  'payments-db': { rps: 900, p95: 12, errRate: 0, cpu: 38, memMb: 7200, memLimitMb: 16384, connections: 184, maxConnections: 500, diskPct: 61 },
   'session-cache': { rps: 1400, p95: 2, errRate: 0, cpu: 12, memMb: 900, memLimitMb: 4096 },
 };
 
