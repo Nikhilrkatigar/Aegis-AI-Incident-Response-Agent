@@ -6,6 +6,9 @@ Aegis is the on-call engineer's first responder. When an alert fires, it investi
 
 It runs against **PayFlow**, a simulated payment platform (gateway, payment, auth, Postgres, Redis) that you can break on purpose from the Fault Lab. Aegis is never told which fault you injected. It only sees what a real on-call engineer would see.
 
+**Live demo:** [aegis-ai-incident-response-agent.vercel.app](https://aegis-ai-incident-response-agent.vercel.app) (desktop or laptop only). Sign in as `nikhil` with password `payflow-oncall`.
+API: [aegis-ai-incident-response-agent-back.onrender.com/api/health](https://aegis-ai-incident-response-agent-back.onrender.com/api/health). The free Render instance sleeps when idle, so the first request can take about 50 seconds.
+
 ![Aegis investigating a bad deployment](docs/screenshots/incident.png)
 
 ---
@@ -156,6 +159,10 @@ flowchart LR
 | Misconfiguration | PSP_BASE_URL pointed at the sandbox; every charge fails with 401 | revert the config |
 | Credential-stuffing attack | botnet traffic from three /24 ranges against /v1/login | block the IP ranges (a security response, not a rollback) |
 | Misleading alert | Redis failover leaves auth on a read-only replica; a harmless payment deploy lands just after | restart auth, **not** roll back payment |
+| Disk full | WAL archiving to S3 fails on an expired key; pg_wal fills the payments-db volume | expand the payments-db volume, **not** kill DB sessions |
+| Cache failure | a session migration writes 5.7M keys with no TTL; session-cache hits maxmemory and rejects writes | clear session-cache (the one fix autopilot may run alone: low risk, tier-2 service) |
+| Dependency outage | the external card processor (PSP) is down; nothing inside PayFlow changed | fail payment over to the secondary acquirer, **not** roll back or restart |
+| Traffic surge | a flash-sale email triples real checkout traffic from ~40k customer IPs | scale payment, **not** block IPs (it is not an attack) |
 
 Scripted edge cases, all reachable from the Fault Lab:
 
@@ -180,7 +187,7 @@ Scripted edge cases, all reachable from the Fault Lab:
 
 Sandbox incident IDs are neutral, so nothing the agent sees names the scenario.
 
-Latest run: 8 scenarios × 1 seed, agent and rule baseline on the same sandboxes (agent on the free model chain):
+Last complete agent run: the original 8 scenarios × 1 seed, agent and rule baseline on the same sandboxes (agent on the free model chain):
 
 | Metric | Aegis agent | Rule baseline |
 |---|---:|---:|
@@ -196,6 +203,10 @@ Where each one went wrong:
 
 - **Rule baseline, misleading alert:** rolled back the harmless payment deploy, because "deploy in the last 15 minutes" is its first rule. The agent compared timestamps, saw auth degrading before the deploy, and restarted auth instead. The baseline fails this in every seed (0/3 in the 24-case baseline run).
 - **Agent, slow dependency:** it found the right cause (auth's worker pool saturated) but recommended a restart, leaning on a past incident where a restart had helped. Its own fallback suggestion, *scale auth*, was the right fix. In a live incident the verifier would see the restart fail and send the agent back with that as new evidence. The benchmark gives one shot, so this counts as a miss.
+
+**All 12 scenarios, rule baseline, 3 seeds each (36 cases):** 33/36 right root cause, right fix and recovered. It fails only the misleading alert, in every seed. On the 4 newer scenarios (disk full, cache failure, dependency outage, traffic surge) it recommends the right fix in 12/12 cases.
+
+The agent has not yet been benchmarked on the 4 newer scenarios. The attempt on 30 Sept ran out of free-tier model quota (OpenRouter, Gemini and Groq daily limits) partway through, so 10 of its 12 cases got no model answer. That run measured quota, not the agent, so it is not reported here. Rerun with `npm run bench -- --agent --seeds=1` once quotas reset or with a paid key.
 
 The rule baseline was written knowing these faults, so it is a strong baseline. The interesting number is the gap: the case where the obvious fix is wrong. The agent runs one seed per scenario because the free model tiers allow only a few hundred calls per day. To run the full 24 agent cases, use `npm run bench -- --agent` with a paid key.
 
