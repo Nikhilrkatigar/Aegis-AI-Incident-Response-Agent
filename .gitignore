@@ -12,3 +12,10 @@ dist/
 *.pdf
 ~$*
 .claude/
+
+# local dev database
+.mongo-data/
+
+# local secrets
+api.txt
+*.key
