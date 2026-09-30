@@ -1,8 +1,7 @@
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
-import { config } from '../config.js';
-import { createMessage, textOf, llmAvailable } from '../agent/llm.js';
+import { chat, textOf, llmAvailable } from '../agent/llm.js';
 import { AgentStep, Action, IncidentMemory } from '../models/index.js';
 
 const PROMPT = fs.readFileSync(fileURLToPath(new URL('../../prompts/report.md', import.meta.url)), 'utf8');
@@ -22,13 +21,13 @@ const PREVENTION = {
 async function narrate(facts) {
   if (!llmAvailable()) return null;
   try {
-    const { res } = await createMessage({
-      model: config.SUMMARY_MODEL,
-      max_tokens: 1200,
+    const { content } = await chat({
+      tier: 'summary',
+      maxTokens: 1200,
       system: PROMPT,
       messages: [{ role: 'user', content: JSON.stringify(facts) }],
     });
-    const json = textOf(res).replace(/^```(json)?|```$/g, '').trim();
+    const json = textOf(content).replace(/^```(json)?|```$/g, '').trim();
     return Narrative.parse(JSON.parse(json));
   } catch {
     return null;

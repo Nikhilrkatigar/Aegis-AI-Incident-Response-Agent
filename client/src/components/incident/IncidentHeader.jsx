@@ -39,7 +39,13 @@ export function IncidentHeader({ incident, stepCount }) {
         <div><dt className="inline">Services </dt><dd className="inline text-ink">{incident.services.join(', ') || '—'}</dd></div>
         <div><dt className="inline">Steps </dt><dd className="inline text-ink tabular">{stepCount}</dd></div>
         {incident.usage?.llmCalls > 0 && (
-          <div><dt className="inline">Agent cost </dt><dd className="inline text-ink tabular">{usd(incident.usage.usd)} · {incident.usage.llmCalls} calls</dd></div>
+          <div>
+            <dt className="inline">Agent usage </dt>
+            <dd className="inline text-ink tabular">
+              {incident.usage.usd > 0 && `${usd(incident.usage.usd)} · `}
+              {Math.round((incident.usage.inputTokens + incident.usage.outputTokens) / 1000)}k tokens · {incident.usage.llmCalls} calls
+            </dd>
+          </div>
         )}
       </dl>
     </header>
