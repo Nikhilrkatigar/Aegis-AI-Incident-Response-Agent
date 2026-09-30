@@ -54,7 +54,7 @@ echo  Install MongoDB Community, or point MONGODB_URI in server\.env at an Atlas
 rem --- API and UI -----------------------------------------------------------
 :apps
 echo  Starting API on http://localhost:4000 ...
-start "Aegis API" cmd /k "cd /d "%~dp0server" && npm run dev"
+start "Aegis API" cmd /k "cd /d "%~dp0server" && npm start"
 echo  Starting UI on http://localhost:5173 ...
 start "Aegis UI" cmd /k "cd /d "%~dp0client" && npm run dev"
 
