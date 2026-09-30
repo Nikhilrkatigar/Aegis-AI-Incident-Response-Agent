@@ -61,7 +61,7 @@ export function createSession(incident, sim) {
     messages: [{ role: 'user', content: [{ type: 'text', text: openingBrief(incident, sim) }] }],
     pendingEvents: [],
     carry: null,
-    usage: { inputTokens: 0, outputTokens: 0, usd: 0, llmCalls: 0 },
+    usage: { inputTokens: 0, outputTokens: 0, usd: 0, llmCalls: 0, models: [] },
     toolCalls: 0,
   };
 }
@@ -141,7 +141,15 @@ export async function investigate(session, emit, maxSteps = config.AGENT_MAX_STE
     session.usage.outputTokens += res.usage.output;
     session.usage.usd += res.usd;
     session.usage.llmCalls++;
-    session.messages.push({ role: 'assistant', content: res.content, ...(res.raw && { raw: res.raw }) });
+    if (!session.usage.models.includes(res.model)) session.usage.models.push(res.model);
+    session.messages.push({ role: 'assistant', content: res.content, ...(res.raw && { raw: res.raw, rawModel: res.rawModel }) });
+    if (res.failovers.length) {
+      await emit({
+        kind: 'note',
+        title: `Switched model: ${res.provider} (${res.model}) took over`,
+        detail: res.failovers.map((f) => `${f.provider} (${f.model}) ${f.reason}`).join('; ') + '. The investigation continues with the same evidence.',
+      });
+    }
 
     const narration = textOf(res.content);
     if (narration) await emit({ kind: 'plan', title: 'Agent reasoning', detail: narration, latencyMs: res.latencyMs });

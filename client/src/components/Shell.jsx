@@ -31,17 +31,39 @@ function Freshness() {
   );
 }
 
+// The model failover chain: which provider answers now, and which are cooling down after a limit.
 function AgentMode() {
-  const [mode, setMode] = useState(null);
+  const [health, setHealth] = useState(null);
   useEffect(() => {
-    api.get('/health').then((h) => setMode(h.agent)).catch(() => setMode('offline'));
+    const load = () => api.get('/health').then(setHealth).catch(() => setHealth({ agent: 'offline', providers: [] }));
+    load();
+    const id = setInterval(load, 15_000);
+    return () => clearInterval(id);
   }, []);
-  if (!mode) return null;
-  const rules = mode === 'rules-only';
+  if (!health) return null;
+  if (!health.providers?.length) {
+    return (
+      <div className="text-[12px] leading-snug">
+        <p className="text-muted">Diagnosis engine</p>
+        <p className="font-mono text-warn">rules only (no API key)</p>
+      </div>
+    );
+  }
   return (
     <div className="text-[12px] leading-snug">
-      <p className="text-muted">Diagnosis engine</p>
-      <p className={`font-mono ${rules ? 'text-warn' : 'text-ink'}`}>{rules ? 'rules only (no API key)' : mode}</p>
+      <p className="text-muted">Model chain</p>
+      <ol className="mt-1 space-y-1">
+        {health.providers.map((p) => (
+          <li key={p.label + p.model} className="flex items-start gap-1.5" title={p.lastError || ''}>
+            <span aria-hidden className={`mt-1 size-1.5 rounded-full shrink-0 ${p.coolingDownFor ? 'bg-warn' : p.active ? 'bg-ok' : 'bg-line'}`} />
+            <span className="min-w-0">
+              <span className={p.active ? 'text-ink font-medium' : 'text-muted'}>{p.label}</span>
+              <span className="block font-mono text-[11px] text-muted truncate">{p.model}</span>
+              {p.coolingDownFor > 0 && <span className="block text-[11px] text-warn">limit hit, retry in {Math.ceil(p.coolingDownFor / 60)}m</span>}
+            </span>
+          </li>
+        ))}
+      </ol>
     </div>
   );
 }

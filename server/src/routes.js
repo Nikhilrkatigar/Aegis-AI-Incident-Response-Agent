@@ -7,7 +7,7 @@ import { SCENARIOS, CHAOS_TOGGLES } from './payflow/scenarios.js';
 import { SERVICES } from './payflow/topology.js';
 import { live } from './payflow/live.js';
 import { getServiceStatus } from './telemetry/tools.js';
-import { llmAvailable, agentModel } from './agent/llm.js';
+import { llmAvailable, agentModel, providerStatus } from './agent/llm.js';
 import { bus } from './incidents/bus.js';
 import { openIncident, approve, reject, addNote } from './incidents/lifecycle.js';
 import { HttpError, route, parse, ok } from './http.js';
@@ -26,7 +26,7 @@ async function loadIncident(id) {
 // --- health & platform --------------------------------------------------------
 
 api.get('/health', (_req, res) =>
-  ok(res, { status: 'ok', db: mongoose.connection.readyState === 1 ? 'up' : 'down', agent: agentModel() || 'rules-only' }),
+  ok(res, { status: 'ok', db: mongoose.connection.readyState === 1 ? 'up' : 'down', agent: agentModel() || 'rules-only', providers: providerStatus() }),
 );
 
 api.get('/platform', (_req, res) => {

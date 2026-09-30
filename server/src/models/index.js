@@ -24,7 +24,7 @@ const incidentSchema = new Schema(
     attempts: { type: Number, default: 0 },
     verification: Mixed,
     report: Mixed,
-    usage: { inputTokens: Number, outputTokens: Number, usd: Number, llmCalls: Number },
+    usage: { inputTokens: Number, outputTokens: Number, usd: Number, llmCalls: Number, models: [String] },
     openedAt: { type: Date, default: Date.now },
     diagnosedAt: Date,
     resolvedAt: Date,
