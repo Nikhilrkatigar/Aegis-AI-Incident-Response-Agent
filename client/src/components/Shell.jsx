@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { FlaskConical, ScrollText, ShieldCheck, Siren } from 'lucide-react';
+import { FlaskConical, Gauge, ScrollText, ShieldCheck, Siren } from 'lucide-react';
 import { useLive } from '../lib/live';
 import { useOnCall, ROSTER } from '../lib/oncall';
 import { api } from '../lib/api';
@@ -9,6 +9,7 @@ import { api } from '../lib/api';
 const NAV = [
   { to: '/incidents', label: 'Incidents', icon: Siren },
   { to: '/lab', label: 'Fault Lab', icon: FlaskConical },
+  { to: '/benchmark', label: 'Benchmark', icon: Gauge },
   { to: '/audit', label: 'Audit log', icon: ScrollText },
 ];
 

@@ -1,15 +1,15 @@
 import { Router } from 'express';
 import mongoose from 'mongoose';
 import { z } from 'zod';
-import { Incident, AgentStep, Action, AuditLog } from './models/index.js';
+import { Incident, AgentStep, Action, AuditLog, BenchmarkRun } from './models/index.js';
+import { startBenchmark, benchmarkStatus, summarize, SEEDS } from './benchmark/run.js';
 import { SCENARIOS, CHAOS_TOGGLES } from './payflow/scenarios.js';
 import { SERVICES } from './payflow/topology.js';
 import { live } from './payflow/live.js';
 import { getServiceStatus } from './telemetry/tools.js';
-import { llmAvailable } from './agent/llm.js';
+import { llmAvailable, agentModel } from './agent/llm.js';
 import { bus } from './incidents/bus.js';
 import { openIncident, approve, reject, addNote } from './incidents/lifecycle.js';
-import { config } from './config.js';
 import { HttpError, route, parse, ok } from './http.js';
 
 export const api = Router();
@@ -26,7 +26,7 @@ async function loadIncident(id) {
 // --- health & platform --------------------------------------------------------
 
 api.get('/health', (_req, res) =>
-  ok(res, { status: 'ok', db: mongoose.connection.readyState === 1 ? 'up' : 'down', agent: llmAvailable() ? config.AGENT_MODEL : 'rules-only' }),
+  ok(res, { status: 'ok', db: mongoose.connection.readyState === 1 ? 'up' : 'down', agent: agentModel() || 'rules-only' }),
 );
 
 api.get('/platform', (_req, res) => {
@@ -123,6 +123,39 @@ api.post('/lab/chaos', route(async (req, res) => {
   else live.chaos.delete(toggle);
   await AuditLog.create({ actor: operator, action: enabled ? 'lab.chaos_on' : 'lab.chaos_off', detail: toggle });
   ok(res, { toggle, enabled });
+}));
+
+// --- benchmark ------------------------------------------------------------------
+
+api.get('/benchmark', route(async (req, res) => {
+  const batches = await BenchmarkRun.aggregate([
+    { $group: { _id: '$batch', at: { $min: '$createdAt' }, diagnosers: { $addToSet: '$diagnoser' }, cases: { $sum: 1 } } },
+    { $sort: { at: -1 } },
+    { $limit: 10 },
+  ]);
+  const batch = parse(z.string().max(40).optional(), req.query.batch) || batches[0]?._id;
+  const runs = batch ? await BenchmarkRun.find({ batch }).sort({ scenario: 1, seed: 1 }).lean() : [];
+  ok(res, {
+    running: benchmarkStatus(),
+    agentAvailable: llmAvailable(),
+    seeds: SEEDS,
+    batches: batches.map((b) => ({ batch: b._id, at: b.at, diagnosers: b.diagnosers, cases: b.cases })),
+    batch,
+    summary: summarize(runs),
+    runs,
+  });
+}));
+
+api.post('/benchmark', route(async (req, res) => {
+  const { diagnoser, operator } = parse(z.object({ diagnoser: z.enum(['baseline', 'both']), operator: Person }), req.body);
+  let started;
+  try {
+    started = await startBenchmark({ diagnosers: diagnoser === 'both' ? ['baseline', 'agent'] : ['baseline'] });
+  } catch (err) {
+    throw new HttpError(409, err.message);
+  }
+  await AuditLog.create({ actor: operator, action: 'benchmark.started', detail: `${started.batch}: ${started.total} cases (${diagnoser})` });
+  ok(res, { batch: started.batch, total: started.total }, 202);
 }));
 
 // --- audit & live events ----------------------------------------------------------

@@ -110,6 +110,7 @@ const benchmarkSchema = new Schema(
     diagnosisMs: Number,
     steps: Number,
     usd: Number,
+    tokens: Number,
     error: String,
   },
   { timestamps: true },

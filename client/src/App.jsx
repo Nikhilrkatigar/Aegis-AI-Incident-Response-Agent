@@ -9,6 +9,7 @@ import IncidentsPage from './pages/IncidentsPage';
 import ReportPage from './pages/ReportPage';
 import LabPage from './pages/LabPage';
 import AuditPage from './pages/AuditPage';
+import BenchmarkPage from './pages/BenchmarkPage';
 
 export default function App() {
   return (
@@ -24,6 +25,7 @@ export default function App() {
                   <Route path="incidents/:id" element={<IncidentsPage />} />
                   <Route path="incidents/:id/report" element={<ReportPage />} />
                   <Route path="lab" element={<LabPage />} />
+                  <Route path="benchmark" element={<BenchmarkPage />} />
                   <Route path="audit" element={<AuditPage />} />
                   <Route path="*" element={<Navigate to="/incidents" replace />} />
                 </Route>
